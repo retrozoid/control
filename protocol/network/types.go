@@ -1,11 +1,11 @@
 package network
 
 import (
-	"github.com/ecwid/control/protocol/common"
-	"github.com/ecwid/control/protocol/debugger"
-	"github.com/ecwid/control/protocol/io"
-	"github.com/ecwid/control/protocol/runtime"
-	"github.com/ecwid/control/protocol/security"
+	"github.com/retrozoid/control/protocol/common"
+	"github.com/retrozoid/control/protocol/debugger"
+	"github.com/retrozoid/control/protocol/io"
+	"github.com/retrozoid/control/protocol/runtime"
+	"github.com/retrozoid/control/protocol/security"
 )
 
 /*

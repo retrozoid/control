@@ -3,8 +3,8 @@ package main
 import (
 	"log"
 
-	"github.com/ecwid/control"
-	"github.com/ecwid/control/backoff"
+	"github.com/retrozoid/control"
+	"github.com/retrozoid/control/backoff"
 )
 
 func main() {

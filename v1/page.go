@@ -1,8 +1,8 @@
 package v1
 
 import (
-	"github.com/ecwid/control/protocol/browser"
-	"github.com/ecwid/control/protocol/page"
+	"github.com/retrozoid/control/protocol/browser"
+	"github.com/retrozoid/control/protocol/page"
 )
 
 // CaptureScreenshot get screen of current page

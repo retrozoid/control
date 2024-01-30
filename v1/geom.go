@@ -3,7 +3,7 @@ package v1
 import (
 	"math"
 
-	"github.com/ecwid/control/protocol/dom"
+	"github.com/retrozoid/control/protocol/dom"
 )
 
 // Point point

@@ -3,8 +3,8 @@ package control
 import (
 	"sync"
 
-	"github.com/ecwid/control/protocol"
-	"github.com/ecwid/control/protocol/input"
+	"github.com/retrozoid/control/protocol"
+	"github.com/retrozoid/control/protocol/input"
 )
 
 const (

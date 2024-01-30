@@ -1,7 +1,7 @@
 package serviceworker
 
 import (
-	"github.com/ecwid/control/protocol/target"
+	"github.com/retrozoid/control/protocol/target"
 )
 
 /*

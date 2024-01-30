@@ -4,20 +4,34 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
-	"github.com/ecwid/control/cdp"
-	"github.com/ecwid/control/protocol/browser"
-	"github.com/ecwid/control/protocol/common"
-	"github.com/ecwid/control/protocol/dom"
-	"github.com/ecwid/control/protocol/network"
-	"github.com/ecwid/control/protocol/page"
-	"github.com/ecwid/control/protocol/runtime"
-	"github.com/ecwid/control/protocol/target"
+	"github.com/retrozoid/control/cdp"
+	"github.com/retrozoid/control/protocol/browser"
+	"github.com/retrozoid/control/protocol/common"
+	"github.com/retrozoid/control/protocol/dom"
+	"github.com/retrozoid/control/protocol/network"
+	"github.com/retrozoid/control/protocol/page"
+	"github.com/retrozoid/control/protocol/runtime"
+	"github.com/retrozoid/control/protocol/target"
 )
 
 // The Longest post body size (in bytes) that would be included in requestWillBeSent notification
 var MaxPostDataSize = 20 * 1024 // 20KB
+
+const Blank = "about:blank"
+
+var (
+	ErrTargetDestroyed error = errors.New("target destroyed")
+	ErrTargetDetached  error = errors.New("session detached from target")
+)
+
+type TargetCrashedError []byte
+
+func (t TargetCrashedError) Error() string {
+	return fmt.Sprintf(string(t))
+}
 
 func mustUnmarshal[T any](u cdp.Message) T {
 	var value T
@@ -145,18 +159,18 @@ func (s *Session) handle(message cdp.Message) error {
 		s.frames.Remove(frameDetached.FrameId)
 
 	case "Target.detachedFromTarget":
-		return errors.New("detached from target")
+		return ErrTargetDetached
 
 	case "Target.targetDestroyed":
 		targetDestroyed := mustUnmarshal[target.TargetDestroyed](message)
 		if s.targetID == targetDestroyed.TargetId {
-			return errors.New("target destroyed")
+			return ErrTargetDestroyed
 		}
 
 	case "Target.targetCrashed":
 		targetCrashed := mustUnmarshal[target.TargetCrashed](message)
 		if s.targetID == targetCrashed.TargetId {
-			return errors.New(string(message.Params))
+			return TargetCrashedError(message.Params)
 		}
 	}
 
@@ -190,4 +204,30 @@ func (s *Session) GetTargetCreated() FutureWithDeadline[target.TargetCreated] {
 	return MakeFuture(s, "Target.targetCreated", func(t target.TargetCreated) bool {
 		return t.TargetInfo.Type == "page" && t.TargetInfo.OpenerId == s.targetID
 	})
+}
+
+func (s *Session) CreatePageTargetTab(url string) (*Session, error) {
+	if url == "" {
+		url = Blank // headless chrome crash when url is empty
+	}
+	r, err := target.CreateTarget(s, target.CreateTargetArgs{Url: url})
+	if err != nil {
+		return nil, err
+	}
+	return NewSession(s.transport, r.TargetId)
+}
+
+func (s *Session) ActivateTarget(id target.TargetID) error {
+	return target.ActivateTarget(s, target.ActivateTargetArgs{
+		TargetId: id,
+	})
+}
+
+func (s *Session) CloseTarget(id target.TargetID) (err error) {
+	err = target.CloseTarget(s, target.CloseTargetArgs{TargetId: id})
+	/* Target.detachedFromTarget event may come before the response of CloseTarget call */
+	if err == ErrTargetDetached {
+		return nil
+	}
+	return err
 }

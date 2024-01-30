@@ -6,10 +6,10 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/ecwid/control/protocol/common"
-	"github.com/ecwid/control/protocol/runtime"
-	"github.com/ecwid/control/protocol/target"
-	"github.com/ecwid/control/transport"
+	"github.com/retrozoid/control/protocol/common"
+	"github.com/retrozoid/control/protocol/runtime"
+	"github.com/retrozoid/control/protocol/target"
+	"github.com/retrozoid/control/transport"
 )
 
 const (

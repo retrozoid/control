@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ecwid/control"
-	"github.com/ecwid/control/protocol/common"
-	"github.com/ecwid/control/protocol/target"
+	"github.com/retrozoid/control"
+	"github.com/retrozoid/control/protocol/common"
+	"github.com/retrozoid/control/protocol/target"
 )
 
 var (

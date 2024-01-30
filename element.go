@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/ecwid/control/protocol/dom"
+	"github.com/retrozoid/control/protocol/dom"
 )
 
 var (
@@ -79,7 +79,7 @@ func (e OptionalNode) AsFrame() (Frame, error) {
 	}
 	result := Frame{
 		id:      value.Node.FrameId,
-		session: e.jsNode.frame.session,
+		session: e.Value.frame.session,
 	}
 	return result, nil
 }
@@ -169,10 +169,10 @@ func (e OptionalNode) Click() (err error) {
 	if err != nil {
 		return err
 	}
-	if err = e.jsNode.frame.Click(point); err != nil {
+	if err = e.Value.frame.Click(point); err != nil {
 		return err
 	}
-	_, err = e.jsNode.frame.awaitPromise(promise)
+	_, err = e.Value.frame.awaitPromise(promise)
 	return err
 }
 
@@ -204,4 +204,12 @@ func (e OptionalNode) GetContentQuad() (Quad, error) {
 		}
 	}
 	return nil, ErrElementIsOutOfViewport
+}
+
+func (e OptionalNode) Hover() (err error) {
+	p, err := e.ClickablePoint()
+	if err != nil {
+		return err
+	}
+	return e.Value.frame.Hover(p)
 }

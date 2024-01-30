@@ -3,7 +3,7 @@ package control
 import (
 	"errors"
 
-	"github.com/ecwid/control/protocol/runtime"
+	"github.com/retrozoid/control/protocol/runtime"
 )
 
 var ErrExecutionContextDestroyed = errors.New("execution context destroyed")
@@ -38,15 +38,18 @@ func (r remoteObjectId) ObjectID() runtime.RemoteObjectId {
 	return runtime.RemoteObjectId(r)
 }
 
-type jsNode struct {
+type node struct {
 	JsObject
 	frame Frame
 }
 
-type OptionalNode struct {
-	jsNode
-	Err error
+type Optional[T any] struct {
+	Value T
+	Err   error
 }
+
+type OptionalNode Optional[node]
+type OptionalNodes Optional[[]node]
 
 func toOptionalNode(value any, err error) OptionalNode {
 	if err != nil {
@@ -55,16 +58,15 @@ func toOptionalNode(value any, err error) OptionalNode {
 	if value == nil {
 		return OptionalNode{Err: ErrElementNotFound}
 	}
-	node, ok := value.(jsNode)
-	if !ok {
-		return OptionalNode{Err: ErrElementIsNotNode}
+	if n, ok := value.(node); ok {
+		return OptionalNode{Value: n}
 	}
-	return OptionalNode{jsNode: node}
+	return OptionalNode{Err: ErrElementIsNotNode}
 }
 
 func (e OptionalNode) ObjectID() runtime.RemoteObjectId {
 	if e.Err == nil {
-		return e.jsNode.ObjectID()
+		return e.Value.ObjectID()
 	}
 	return ""
 }
@@ -73,21 +75,21 @@ func (e OptionalNode) Call(method string, send, recv interface{}) error {
 	if e.Err != nil {
 		return e.Err
 	}
-	return e.jsNode.frame.Call(method, send, recv)
+	return e.Value.frame.Call(method, send, recv)
 }
 
 func (e OptionalNode) eval(function string, args ...any) (any, error) {
 	if e.Err != nil {
 		return nil, e.Err
 	}
-	return e.jsNode.frame.callFunctionOn(e, function, true, args...)
+	return e.Value.frame.callFunctionOn(e, function, true, args...)
 }
 
 func (e OptionalNode) asyncEval(function string, args ...any) (JsObject, error) {
 	if e.Err != nil {
 		return nil, e.Err
 	}
-	value, err := e.jsNode.frame.callFunctionOn(e, function, false, args...)
+	value, err := e.Value.frame.callFunctionOn(e, function, false, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +121,7 @@ func (f Frame) unserialize(value evalValue) (any, error) {
 	case "node":
 		switch getNodeType(deepSerializedValue.Value) {
 		case nodeTypeElement, nodeTypeDocument:
-			return jsNode{
+			return node{
 				JsObject: remoteObjectId(value.Result.ObjectId),
 				frame:    f,
 			}, nil

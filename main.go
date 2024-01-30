@@ -8,9 +8,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ecwid/control/cdp"
-	"github.com/ecwid/control/chrome"
-	"github.com/ecwid/control/protocol/target"
+	"github.com/retrozoid/control/cdp"
+	"github.com/retrozoid/control/chrome"
+	"github.com/retrozoid/control/protocol/target"
 )
 
 func Take(args ...string) (session *Session, dfr func(), err error) {

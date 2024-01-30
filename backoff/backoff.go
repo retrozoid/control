@@ -5,7 +5,11 @@ import (
 	"time"
 )
 
-var DefaultBackoffTimeout = time.Minute
+var (
+	DefaultBackoffTimeout = time.Minute
+	DefaultBackoffTick    = 500 * time.Millisecond
+	DefaultBackoffAttempt = 7
+)
 
 // Sleep ...
 // 0 = 0s, 1 = 1s, 2 = 2s, 3 = 4s, 4 = 8s, 5 = 17s,
@@ -21,7 +25,7 @@ func Exec(fn func() error) {
 	var retry = 0
 	for start := time.Now(); time.Since(start) < DefaultBackoffTimeout; {
 		if retry > 0 {
-			sleep(retry)
+			time.Sleep(DefaultBackoffTick)
 		}
 		if err = fn(); err == nil {
 			return
@@ -37,7 +41,7 @@ func Value[T any](fn func() (T, error)) T {
 	var retry = 0
 	for start := time.Now(); time.Since(start) < DefaultBackoffTimeout; {
 		if retry > 0 {
-			sleep(retry)
+			time.Sleep(DefaultBackoffTick)
 		}
 		if value, err = fn(); err == nil {
 			return value

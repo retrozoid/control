@@ -1,7 +1,7 @@
 package storage
 
 import (
-	"github.com/ecwid/control/protocol/common"
+	"github.com/retrozoid/control/protocol/common"
 )
 
 /*

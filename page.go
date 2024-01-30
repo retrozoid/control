@@ -4,8 +4,8 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/ecwid/control/protocol/common"
-	"github.com/ecwid/control/protocol/page"
+	"github.com/retrozoid/control/protocol/common"
+	"github.com/retrozoid/control/protocol/page"
 )
 
 type Frame struct {
@@ -82,4 +82,15 @@ func (f Frame) Click(point Point) error {
 
 func (f Frame) Hover(point Point) error {
 	return NewMouse(f).Move(MouseNone, point)
+}
+
+func (f Frame) GetNavigationEntry() (*page.NavigationEntry, error) {
+	val, err := page.GetNavigationHistory(f)
+	if err != nil {
+		return nil, err
+	}
+	if val.CurrentIndex == -1 {
+		return &page.NavigationEntry{Url: Blank}, nil
+	}
+	return val.Entries[val.CurrentIndex], nil
 }

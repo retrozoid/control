@@ -1,8 +1,8 @@
 package fetch
 
 import (
-	"github.com/ecwid/control/protocol/common"
-	"github.com/ecwid/control/protocol/network"
+	"github.com/retrozoid/control/protocol/common"
+	"github.com/retrozoid/control/protocol/network"
 )
 
 /*

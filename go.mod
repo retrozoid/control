@@ -1,4 +1,4 @@
-module github.com/ecwid/control
+module github.com/retrozoid/control
 
 go 1.21
 

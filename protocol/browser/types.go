@@ -1,8 +1,8 @@
 package browser
 
 import (
-	"github.com/ecwid/control/protocol/common"
-	"github.com/ecwid/control/protocol/target"
+	"github.com/retrozoid/control/protocol/common"
+	"github.com/retrozoid/control/protocol/target"
 )
 
 /*

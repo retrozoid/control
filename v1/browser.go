@@ -4,13 +4,13 @@ import (
 	"context"
 	"sync"
 
-	"github.com/ecwid/control"
-	"github.com/ecwid/control/protocol/browser"
-	"github.com/ecwid/control/protocol/network"
-	"github.com/ecwid/control/protocol/page"
-	"github.com/ecwid/control/protocol/runtime"
-	"github.com/ecwid/control/protocol/target"
-	"github.com/ecwid/control/transport"
+	"github.com/retrozoid/control"
+	"github.com/retrozoid/control/protocol/browser"
+	"github.com/retrozoid/control/protocol/network"
+	"github.com/retrozoid/control/protocol/page"
+	"github.com/retrozoid/control/protocol/runtime"
+	"github.com/retrozoid/control/protocol/target"
+	"github.com/retrozoid/control/transport"
 )
 
 type BrowserContext struct {

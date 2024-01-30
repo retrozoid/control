@@ -1,7 +1,7 @@
 package profiler
 
 import (
-	"github.com/ecwid/control/protocol/runtime"
+	"github.com/retrozoid/control/protocol/runtime"
 )
 
 /*

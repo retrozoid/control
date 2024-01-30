@@ -1,8 +1,8 @@
 package overlay
 
 import (
-	"github.com/ecwid/control/protocol/dom"
-	"github.com/ecwid/control/protocol/page"
+	"github.com/retrozoid/control/protocol/dom"
+	"github.com/retrozoid/control/protocol/page"
 )
 
 /*

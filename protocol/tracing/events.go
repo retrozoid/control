@@ -1,7 +1,7 @@
 package tracing
 
 import (
-	"github.com/ecwid/control/protocol/io"
+	"github.com/retrozoid/control/protocol/io"
 )
 
 /*

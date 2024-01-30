@@ -1,8 +1,8 @@
 package css
 
 import (
-	"github.com/ecwid/control/protocol/common"
-	"github.com/ecwid/control/protocol/dom"
+	"github.com/retrozoid/control/protocol/common"
+	"github.com/retrozoid/control/protocol/dom"
 )
 
 /*

@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ecwid/control/protocol/input"
+	"github.com/retrozoid/control/protocol/input"
 )
 
 const (

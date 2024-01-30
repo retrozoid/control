@@ -1,7 +1,7 @@
 package mobile
 
 import (
-	"github.com/ecwid/control/protocol/emulation"
+	"github.com/retrozoid/control/protocol/emulation"
 )
 
 type ScreenOrientationType = string

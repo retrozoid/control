@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/ecwid/control/protocol/network"
-	"github.com/ecwid/control/transport"
+	"github.com/retrozoid/control/protocol/network"
+	"github.com/retrozoid/control/transport"
 )
 
 func (s *Session) CaptureResponseReceived(condition func(request *network.Request) bool, rejectOnLoadingFailed bool) Future { // Future<network.ResponseReceived>

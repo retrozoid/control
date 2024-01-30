@@ -1,7 +1,7 @@
 package heapprofiler
 
 import (
-	"github.com/ecwid/control/protocol"
+	"github.com/retrozoid/control/protocol"
 )
 
 /*

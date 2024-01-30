@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ecwid/control/transport"
+	"github.com/retrozoid/control/transport"
 )
 
 const (

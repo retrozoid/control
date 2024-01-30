@@ -3,7 +3,7 @@ package control
 import (
 	"sync"
 
-	"github.com/ecwid/control/protocol/common"
+	"github.com/retrozoid/control/protocol/common"
 )
 
 type syncFrames struct {

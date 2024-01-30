@@ -1,9 +1,9 @@
 package v1
 
 import (
-	"github.com/ecwid/control/mobile"
-	"github.com/ecwid/control/protocol/common"
-	"github.com/ecwid/control/protocol/emulation"
+	"github.com/retrozoid/control/mobile"
+	"github.com/retrozoid/control/protocol/common"
+	"github.com/retrozoid/control/protocol/emulation"
 )
 
 type Emulation struct {

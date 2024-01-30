@@ -5,10 +5,10 @@ import (
 	"math"
 	"time"
 
-	"github.com/ecwid/control"
-	"github.com/ecwid/control/protocol/dom"
-	"github.com/ecwid/control/protocol/input"
-	"github.com/ecwid/control/protocol/runtime"
+	"github.com/retrozoid/control"
+	"github.com/retrozoid/control/protocol/dom"
+	"github.com/retrozoid/control/protocol/input"
+	"github.com/retrozoid/control/protocol/runtime"
 )
 
 func (f Frame) constructElement(object *runtime.RemoteObject) (*Element, error) {

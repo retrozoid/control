@@ -1,8 +1,8 @@
 package animation
 
 import (
-	"github.com/ecwid/control/protocol/dom"
-	"github.com/ecwid/control/protocol/runtime"
+	"github.com/retrozoid/control/protocol/dom"
+	"github.com/retrozoid/control/protocol/runtime"
 )
 
 /*

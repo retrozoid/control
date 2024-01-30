@@ -4,7 +4,7 @@
 _Warning_ This is an experimental project, backward compatibility is not guaranteed!
 
 ## Installation
-`go get -u github.com/ecwid/control`
+`go get -u github.com/retrozoid/control`
 
 ## How to use
 
@@ -18,8 +18,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/ecwid/control"
-	"github.com/ecwid/control/chrome"
+	"github.com/retrozoid/control"
+	"github.com/retrozoid/control/chrome"
 )
 
 func main() {
