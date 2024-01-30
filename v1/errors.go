@@ -1,10 +1,11 @@
-package control
+package v1
 
 import (
 	"errors"
 	"fmt"
 	"time"
 
+	"github.com/ecwid/control"
 	"github.com/ecwid/control/protocol/common"
 	"github.com/ecwid/control/protocol/target"
 )
@@ -42,7 +43,7 @@ func (n NoSuchFrameError) Error() string {
 }
 
 type RemoteObjectCastError struct {
-	object primitiveRemoteObject
+	object control.primitiveRemoteObject
 	cast   string
 }
 

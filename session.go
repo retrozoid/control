@@ -4,169 +4,190 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"sync"
+	"time"
 
+	"github.com/ecwid/control/cdp"
+	"github.com/ecwid/control/protocol/browser"
 	"github.com/ecwid/control/protocol/common"
+	"github.com/ecwid/control/protocol/dom"
+	"github.com/ecwid/control/protocol/network"
+	"github.com/ecwid/control/protocol/page"
 	"github.com/ecwid/control/protocol/runtime"
 	"github.com/ecwid/control/protocol/target"
-	"github.com/ecwid/control/transport"
 )
 
-const (
-	Blank     = "about:blank"
-	bindClick = "_on_click"
-)
+// The Longest post body size (in bytes) that would be included in requestWillBeSent notification
+var MaxPostDataSize = 20 * 1024 // 20KB
+
+func mustUnmarshal[T any](u cdp.Message) T {
+	var value T
+	err := json.Unmarshal(u.Params, &value)
+	if err != nil {
+		panic(err)
+	}
+	return value
+}
 
 type Session struct {
-	browser    BrowserContext
-	id         target.SessionID
-	tid        target.TargetID
-	executions *sync.Map
-	eventPool  chan transport.Event
-	publisher  *transport.Publisher
-	exitCode   error
-	context    context.Context
-	cancelCtx  func()
-	detach     func()
-
-	Network   Network
-	Input     Input
-	Emulation Emulation
+	Timeout   time.Duration
+	context   context.Context
+	transport *cdp.Transport
+	targetID  target.TargetID
+	sessionID string
+	frames    *syncFrames
+	Frame
 }
 
-func (s Session) Call(method string, send, recv interface{}) error {
+func (s *Session) Transport() *cdp.Transport {
+	return s.transport
+}
+
+func (s *Session) GetID() string {
+	return s.sessionID
+}
+
+func (s *Session) Call(method string, send, recv any) error {
 	select {
 	case <-s.context.Done():
-		if s.exitCode != nil {
-			return s.exitCode
-		}
-		return s.context.Err()
+		return context.Cause(s.context)
 	default:
-		return s.browser.Client.Call(string(s.id), method, send, recv)
 	}
-}
+	future := s.transport.Send(&cdp.Request{
+		SessionID: s.sessionID,
+		Method:    method,
+		Params:    send,
+	})
+	defer future.Cancel()
 
-func (s Session) GetBrowserContext() BrowserContext {
-	return s.browser
-}
-
-func (s Session) GetTargetID() target.TargetID {
-	return s.tid
-}
-
-func (s Session) ID() string {
-	return string(s.id)
-}
-
-func (s Session) Name() string {
-	return s.ID()
-}
-
-func (s Session) Page() *Frame {
-	return &Frame{id: common.FrameId(s.tid), session: &s}
-}
-
-func (s Session) Frame(id common.FrameId) (*Frame, error) {
-	if _, ok := s.executions.Load(id); ok {
-		return &Frame{id: id, session: &s}, nil
+	ctxTo, cancel := context.WithTimeout(s.context, s.Timeout)
+	defer cancel()
+	value, err := future.Get(ctxTo)
+	if err != nil {
+		return err
 	}
-	return nil, NoSuchFrameError{id: id}
-}
 
-func (s Session) Activate() error {
-	return s.browser.ActivateTarget(s.tid)
-}
-
-func (s Session) Update(val transport.Event) error {
-	select {
-	case s.eventPool <- val:
-	case <-s.context.Done():
-	default:
-		return errors.New("eventPool is full")
+	if recv != nil {
+		return json.Unmarshal(value.Result, recv)
 	}
 	return nil
 }
 
-func (s *Session) handle(e transport.Event) error {
-	switch e.Method {
-
-	case "Runtime.executionContextCreated":
-		var v = runtime.ExecutionContextCreated{}
-		if err := json.Unmarshal(e.Params, &v); err != nil {
-			return err
-		}
-		frameID := common.FrameId((v.Context.AuxData.(map[string]interface{}))["frameId"].(string))
-		s.executions.Store(frameID, v.Context.UniqueId)
-
-	case "Target.targetCrashed":
-		var v = target.TargetCrashed{}
-		if err := json.Unmarshal(e.Params, &v); err != nil {
-			return err
-		}
-		return ErrTargetCrashed(v)
-
-	case "Target.targetDestroyed":
-		var v = target.TargetDestroyed{}
-		if err := json.Unmarshal(e.Params, &v); err != nil {
-			return err
-		}
-		if v.TargetId == s.tid {
-			return ErrTargetDestroyed
-		}
-
-	case "Target.detachedFromTarget":
-		var v = target.DetachedFromTarget{}
-		if err := json.Unmarshal(e.Params, &v); err != nil {
-			return err
-		}
-		if v.SessionId == s.id {
-			return ErrDetachedFromTarget
-		}
-
-	}
-	return s.publisher.Notify(e.Method, e)
+func (s *Session) Subscribe() (channel chan cdp.Message, cancel func()) {
+	return s.transport.Subscribe(s.sessionID)
 }
 
-func (s *Session) handleEventPool() {
-	defer func() {
-		s.detach() // detach from the transport updates
-		s.cancelCtx()
-	}()
-	for e := range s.eventPool {
-		if err := s.handle(e); err != nil {
-			s.exitCode = err
-			return
-		}
-	}
-}
-
-func (s Session) onBindingCalled(name string, function func(string)) (cancel func()) {
-	return s.Subscribe("Runtime.bindingCalled", func(value transport.Event) error {
-		bindingCalled := runtime.BindingCalled{}
-		err := json.Unmarshal(value.Params, &bindingCalled)
-		if err != nil {
-			return err
-		}
-		if bindingCalled.Name == name {
-			function(bindingCalled.Payload)
-		}
-		return nil
+func (s *Session) Close() error {
+	return target.CloseTarget(s, target.CloseTargetArgs{
+		TargetId: s.targetID,
 	})
 }
 
-func (s Session) Subscribe(event string, v func(e transport.Event) error) (cancel func()) {
-	return s.publisher.Register(transport.NewSimpleObserver(event, v))
-}
-
-func (s Session) Close() error {
-	return s.browser.CloseTarget(s.tid)
-}
-
-func (s Session) IsClosed() bool {
-	select {
-	case <-s.context.Done():
-		return true
-	default:
-		return false
+func NewSession(transport *cdp.Transport, targetID target.TargetID) (*Session, error) {
+	var session = &Session{
+		transport: transport,
+		targetID:  targetID,
+		Timeout:   60 * time.Second,
+		frames:    &syncFrames{value: make(map[common.FrameId]string)},
 	}
+	session.Frame = Frame{
+		session: session,
+		id:      common.FrameId(session.targetID),
+	}
+	var cancel func(error)
+	session.context, cancel = context.WithCancelCause(transport.Context())
+	val, err := target.AttachToTarget(session, target.AttachToTargetArgs{
+		TargetId: targetID,
+		Flatten:  true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	session.sessionID = string(val.SessionId)
+	channel, unsubscribe := session.Subscribe()
+	go func() {
+		for msg := range channel {
+			if err := session.handle(msg); err != nil {
+				unsubscribe()
+				cancel(err)
+			}
+		}
+	}()
+
+	if err = page.Enable(session); err != nil {
+		return nil, err
+	}
+	if err = dom.Enable(session, dom.EnableArgs{}); err != nil {
+		return nil, err
+	}
+	if err = runtime.Enable(session); err != nil {
+		return nil, err
+	}
+	if err = target.SetDiscoverTargets(session, target.SetDiscoverTargetsArgs{Discover: true}); err != nil {
+		return nil, err
+	}
+	if err = network.Enable(session, network.EnableArgs{MaxPostDataSize: MaxPostDataSize}); err != nil {
+		return nil, err
+	}
+	return session, nil
+}
+
+func (s *Session) handle(message cdp.Message) error {
+	switch message.Method {
+
+	case "Runtime.executionContextCreated":
+		executionContextCreated := mustUnmarshal[runtime.ExecutionContextCreated](message)
+		aux := executionContextCreated.Context.AuxData.(map[string]any)
+		frameID := aux["frameId"].(string)
+		s.frames.Set(common.FrameId(frameID), executionContextCreated.Context.UniqueId)
+
+	case "Page.frameDetached":
+		frameDetached := mustUnmarshal[page.FrameDetached](message)
+		s.frames.Remove(frameDetached.FrameId)
+
+	case "Target.detachedFromTarget":
+		return errors.New("detached from target")
+
+	case "Target.targetDestroyed":
+		targetDestroyed := mustUnmarshal[target.TargetDestroyed](message)
+		if s.targetID == targetDestroyed.TargetId {
+			return errors.New("target destroyed")
+		}
+
+	case "Target.targetCrashed":
+		targetCrashed := mustUnmarshal[target.TargetCrashed](message)
+		if s.targetID == targetCrashed.TargetId {
+			return errors.New(string(message.Params))
+		}
+	}
+
+	return nil
+}
+
+func (s *Session) CaptureScreenshot(format string, quality int, clip *page.Viewport, fromSurface, captureBeyondViewport, optimizeForSpeed bool) ([]byte, error) {
+	val, err := page.CaptureScreenshot(s, page.CaptureScreenshotArgs{
+		Format:                format,
+		Quality:               quality,
+		Clip:                  clip,
+		FromSurface:           fromSurface,
+		CaptureBeyondViewport: captureBeyondViewport,
+		OptimizeForSpeed:      optimizeForSpeed,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return val.Data, nil
+}
+
+func (s *Session) SetDownloadBehavior(behavior string, downloadPath string, eventsEnabled bool) error {
+	return browser.SetDownloadBehavior(s, browser.SetDownloadBehaviorArgs{
+		Behavior:      behavior,
+		DownloadPath:  downloadPath,
+		EventsEnabled: eventsEnabled, // default false
+	})
+}
+
+func (s *Session) GetTargetCreated() FutureWithDeadline[target.TargetCreated] {
+	return MakeFuture(s, "Target.targetCreated", func(t target.TargetCreated) bool {
+		return t.TargetInfo.Type == "page" && t.TargetInfo.OpenerId == s.targetID
+	})
 }

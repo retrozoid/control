@@ -1,359 +1,207 @@
 package control
 
 import (
+	"errors"
 	"fmt"
 	"math"
-	"time"
 
 	"github.com/ecwid/control/protocol/dom"
-	"github.com/ecwid/control/protocol/input"
-	"github.com/ecwid/control/protocol/runtime"
 )
 
-func (f Frame) constructElement(object *runtime.RemoteObject) (*Element, error) {
-	val, err := dom.DescribeNode(f, dom.DescribeNodeArgs{
-		ObjectId: object.ObjectId,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &Element{node: val.Node, runtime: object, frame: &f}, nil
+var (
+	ErrElementNotFound        = errors.New("element not found")
+	ErrElementNotVisible      = errors.New("element not visible")
+	ErrElementIsNotNode       = errors.New("element is not node")
+	ErrElementIsOutOfViewport = errors.New("element is out of viewport")
+)
+
+type Point struct {
+	X float64
+	Y float64
 }
 
-type Element struct {
-	runtime *runtime.RemoteObject
-	node    *dom.Node
-	frame   *Frame
-}
+// Quad quad
+type Quad []Point
 
-func (e Element) Description() string {
-	return e.runtime.Description
-}
-
-func (e Element) Node() *dom.Node {
-	return e.node
-}
-
-func (e Element) QuerySelector(selector string) (*Element, error) {
-	val, err := e.CallFunction(`function(s){return this.querySelector(s)}`, true, false, NewSingleCallArgument(selector))
-	if err != nil {
-		return nil, err
-	}
-	return e.frame.constructElement(val)
-}
-
-func (e Element) CallFunction(function string, await, returnByValue bool, args []*runtime.CallArgument) (*runtime.RemoteObject, error) {
-	val, err := runtime.CallFunctionOn(e.frame, runtime.CallFunctionOnArgs{
-		FunctionDeclaration: function,
-		ObjectId:            e.runtime.ObjectId,
-		AwaitPromise:        await,
-		ReturnByValue:       returnByValue,
-		Arguments:           args,
-	})
-	if err != nil {
-		return nil, err
-	}
-	if val.ExceptionDetails != nil {
-		return nil, RuntimeError(*val.ExceptionDetails)
-	}
-	return val.Result, nil
-}
-
-func NewSingleCallArgument(arg interface{}) []*runtime.CallArgument {
-	return []*runtime.CallArgument{{Value: arg}}
-}
-
-func (e Element) dispatchEvents(events ...string) error {
-	_, err := e.CallFunction(functionDispatchEvents, true, false, NewSingleCallArgument(events))
-	return err
-}
-
-func (e Element) ScrollIntoView() error {
-	return dom.ScrollIntoViewIfNeeded(e.frame, dom.ScrollIntoViewIfNeededArgs{
-		BackendNodeId: e.node.BackendNodeId,
-	})
-}
-
-func (e Element) GetText() (string, error) {
-	v, err := e.CallFunction(functionGetText, true, false, nil)
-	if err != nil {
-		return "null", err
-	}
-	return fmt.Sprint(v.Value), nil
-}
-
-func (e Element) Clear() error {
-	_, err := e.CallFunction(functionClearText, true, false, nil)
-	return err
-}
-
-func (e Element) InsertText(text string) error {
-	var err error
-	if err = e.ScrollIntoView(); err != nil {
-		return err
-	}
-	if err = e.Focus(); err != nil {
-		return err
-	}
-	if err = e.Clear(); err != nil {
-		return err
-	}
-	if err = e.frame.Session().Input.InsertText(text); err != nil {
-		return err
-	}
-	if err = e.dispatchEvents(
-		WebEventKeypress,
-		WebEventInput,
-		WebEventKeyup,
-		WebEventChange,
-	); err != nil {
-		return err
-	}
-	return nil
-}
-
-// Type ...
-func (e *Element) Type(text string, delay time.Duration) error {
-	var err error
-	if err = e.ScrollIntoView(); err != nil {
-		return err
-	}
-	if err = e.Clear(); err != nil {
-		return err
-	}
-	if err = e.Focus(); err != nil {
-		return err
-	}
-	for _, c := range text {
-		if isKey(c) {
-			if err = e.frame.Session().Input.Press(keyDefinitions[c]); err != nil {
-				return err
-			}
-		} else {
-			if err = e.InsertText(string(c)); err != nil {
-				return err
-			}
+func convertQuads(dq []dom.Quad) []Quad {
+	var p = make([]Quad, len(dq))
+	for n, q := range dq {
+		p[n] = Quad{
+			Point{q[0], q[1]},
+			Point{q[2], q[3]},
+			Point{q[4], q[5]},
+			Point{q[6], q[7]},
 		}
-		time.Sleep(delay)
 	}
-	if text == "" {
-		return e.dispatchEvents(
-			WebEventKeypress,
-			WebEventInput,
-			WebEventKeyup,
-			WebEventChange,
-		)
-	}
-	return nil
+	return p
 }
 
-func (e Element) GetContentQuad(viewportCorrection bool) (Quad, error) {
-	val, err := dom.GetContentQuads(e.frame, dom.GetContentQuadsArgs{
-		BackendNodeId: e.node.BackendNodeId,
+// Middle calc middle of quad
+func (q Quad) Middle() Point {
+	x := 0.0
+	y := 0.0
+	for i := 0; i < 4; i++ {
+		x += q[i].X
+		y += q[i].Y
+	}
+	return Point{X: x / 4, Y: y / 4}
+}
+
+// Area calc area of quad
+func (q Quad) Area() float64 {
+	var area float64
+	var x1, x2, y1, y2 float64
+	var vertices = len(q)
+	for i := 0; i < vertices; i++ {
+		x1 = q[i].X
+		y1 = q[i].Y
+		x2 = q[(i+1)%vertices].X
+		y2 = q[(i+1)%vertices].Y
+		area += (x1*y2 - x2*y1) / 2
+	}
+	return math.Abs(area)
+}
+
+func (e OptionalNode) Query(cssSelector string) OptionalNode {
+	value, err := e.eval(`function(s){return this.querySelector(s)}`, safeSelector(cssSelector))
+	return toOptionalNode(value, err)
+}
+
+func (e OptionalNode) AsFrame() (Frame, error) {
+	if e.Err != nil {
+		return Frame{}, e.Err
+	}
+	value, err := dom.DescribeNode(e, dom.DescribeNodeArgs{
+		ObjectId: e.ObjectID(),
+	})
+	if err != nil {
+		return Frame{}, err
+	}
+	result := Frame{
+		id:      value.Node.FrameId,
+		session: e.jsNode.frame.session,
+	}
+	return result, nil
+}
+
+func (e OptionalNode) ScrollIntoView() error {
+	if e.Err != nil {
+		return e.Err
+	}
+	return dom.ScrollIntoViewIfNeeded(e, dom.ScrollIntoViewIfNeededArgs{ObjectId: e.ObjectID()})
+}
+
+func (e OptionalNode) GetTextContent() (string, error) {
+	value, err := e.eval(`function(){return this.textContent.trim()}`)
+	if err != nil {
+		return "", err
+	}
+	return value.(string), nil
+}
+
+func (e OptionalNode) Focus() error {
+	if e.Err != nil {
+		return e.Err
+	}
+	return dom.Focus(e, dom.FocusArgs{ObjectId: e.ObjectID()})
+}
+
+func (e OptionalNode) Blur() error {
+	_, err := e.eval(`function(){this.blur()}`)
+	return err
+}
+
+func (e OptionalNode) InsertText(value string) (err error) {
+	if err = e.Focus(); err != nil {
+		return err
+	}
+	if err = NewKeyboard(e).Insert(value); err != nil {
+		return err
+	}
+	return e.Blur() // to fire change event
+}
+
+func (e OptionalNode) SetValue(value string) (err error) {
+	if err = e.ClearValue(); err != nil {
+		return err
+	}
+	err = e.InsertText(value)
+	return
+}
+
+func (e OptionalNode) ClearValue() error {
+	_, err := e.eval(`function(){this.value=''}`)
+	return err
+}
+
+func (e OptionalNode) Visible() bool {
+	value, err := e.eval(`function(){return this.checkVisibility()}`)
+	if err != nil {
+		return false
+	}
+	return value.(bool)
+}
+
+func (e OptionalNode) Upload(files ...string) error {
+	if e.Err != nil {
+		return e.Err
+	}
+	return dom.SetFileInputFiles(e, dom.SetFileInputFilesArgs{
+		ObjectId: e.ObjectID(),
+		Files:    files,
+	})
+}
+
+func (e OptionalNode) addEventListener(name string) (JsObject, error) {
+	eval := fmt.Sprintf(`()=>new Promise(e=>{let t=i=>{this.removeEventListener('%s',t),e(i)};this.addEventListener('%s',t)})`, name, name)
+	return e.asyncEval(eval)
+}
+
+func (e OptionalNode) Click() (err error) {
+	if err = e.ScrollIntoView(); err != nil {
+		return err
+	}
+	point, err := e.ClickablePoint()
+	if err != nil {
+		return err
+	}
+	promise, err := e.addEventListener("click")
+	if err != nil {
+		return err
+	}
+	if err = e.jsNode.frame.Click(point); err != nil {
+		return err
+	}
+	_, err = e.jsNode.frame.awaitPromise(promise)
+	return err
+}
+
+func (e OptionalNode) ClickablePoint() (Point, error) {
+	r, err := e.GetContentQuad()
+	if err != nil {
+		return Point{}, err
+	}
+	return r.Middle(), nil
+}
+
+func (e OptionalNode) GetContentQuad() (Quad, error) {
+	if e.Err != nil {
+		return nil, e.Err
+	}
+	val, err := dom.GetContentQuads(e, dom.GetContentQuadsArgs{
+		ObjectId: e.ObjectID(),
 	})
 	if err != nil {
 		return nil, err
 	}
 	quads := convertQuads(val.Quads)
 	if len(quads) == 0 { // should be at least one
-		return nil, ErrNodeIsNotVisible
-	}
-	metric, err := e.frame.Session().GetLayoutMetrics()
-	if err != nil {
-		return nil, err
+		return nil, ErrElementNotVisible
 	}
 	for _, quad := range quads {
-		/* correction is get sub-quad of element that in viewport
-		 _______________  <- Viewport top
-		|  1 _______ 2  |
-		|   |visible|   | visible part of element
-		|__4|visible|3__| <- Viewport bottom
-		|   |invisib|   | this invisible part of element omits if viewportCorrection
-		|...............|
-		*/
-		if viewportCorrection {
-			for i := 0; i < len(quad); i++ {
-				quad[i].X = math.Min(math.Max(quad[i].X, 0), float64(metric.CssLayoutViewport.ClientWidth))
-				quad[i].Y = math.Min(math.Max(quad[i].Y, 0), float64(metric.CssLayoutViewport.ClientHeight))
-			}
-		}
 		if quad.Area() > 1 {
 			return quad, nil
 		}
 	}
-	return nil, ErrNodeIsOutOfViewport
-}
-
-func (e Element) clickablePoint() (x float64, y float64, err error) {
-	r, err := e.GetContentQuad(true)
-	if err != nil {
-		return -1, -1, err
-	}
-	x, y = r.Middle()
-	return x, y, nil
-}
-
-func (e Element) Click() error {
-	return e.ClickWith(MouseLeft, time.Millisecond*10)
-}
-
-func (e Element) ClickWith(button input.MouseButton, delayToRelease time.Duration) error {
-	if err := e.ScrollIntoView(); err != nil {
-		return err
-	}
-	if _, err := e.CallFunction(functionPreventMissClick, true, false, nil); err != nil {
-		return err
-	}
-	var clickValue = make(chan string, 1)
-	defer close(clickValue)
-	cancel := e.frame.session.onBindingCalled(bindClick, func(p string) {
-		select {
-		case clickValue <- p:
-		default:
-		}
-	})
-	defer cancel()
-	x, y, err := e.clickablePoint()
-	if err != nil {
-		return err
-	}
-	if err = e.frame.Session().Input.Click(button, x, y, delayToRelease); err != nil {
-		return err
-	}
-	const timeout = time.Millisecond * 1000
-	var deadline = time.NewTimer(timeout)
-	defer deadline.Stop()
-	select {
-	case v := <-clickValue:
-		if v != "1" {
-			return ClickTargetOverlappedError{X: x, Y: y, outerHTML: v}
-		}
-	case <-deadline.C:
-		return ErrClickTimeout
-	}
-	return nil
-}
-
-func (e Element) Focus() error {
-	return dom.Focus(e.frame, dom.FocusArgs{BackendNodeId: e.node.BackendNodeId})
-}
-
-func (e Element) Upload(files ...string) error {
-	return dom.SetFileInputFiles(e.frame, dom.SetFileInputFilesArgs{
-		Files:         files,
-		BackendNodeId: e.node.BackendNodeId,
-	})
-}
-
-func (e Element) Hover() error {
-	if err := e.ScrollIntoView(); err != nil {
-		return err
-	}
-	x, y, err := e.clickablePoint()
-	if err != nil {
-		return err
-	}
-	return e.frame.Session().Input.MouseMove(MouseNone, x, y)
-}
-
-func (e Element) SetAttribute(attr string, value string) error {
-	_, err := e.CallFunction(functionSetAttr, true, false, []*runtime.CallArgument{
-		{Value: attr},
-		{Value: value},
-	})
-	return err
-}
-
-func (e Element) GetAttribute(attr string) (string, error) {
-	v, err := e.CallFunction(functionGetAttr, true, false, NewSingleCallArgument(attr))
-	if err != nil {
-		return "", err
-	}
-	return primitiveRemoteObject(*v).String()
-}
-
-func (e Element) Checkbox(check bool) error {
-	if _, err := e.CallFunction(functionCheckbox, true, false, NewSingleCallArgument(check)); err != nil {
-		return err
-	}
-	return e.dispatchEvents(WebEventClick, WebEventInput, WebEventChange)
-}
-
-func (e *Element) IsChecked() (bool, error) {
-	v, err := e.CallFunction(functionIsChecked, true, false, nil)
-	if err != nil {
-		return false, err
-	}
-	return primitiveRemoteObject(*v).Bool()
-}
-
-func (e Element) GetRectangle() (*dom.Rect, error) {
-	q, err := e.GetContentQuad(false)
-	if err != nil {
-		return nil, err
-	}
-	rect := &dom.Rect{
-		X:      q[0].X,
-		Y:      q[0].Y,
-		Width:  q[1].X - q[0].X,
-		Height: q[3].Y - q[0].Y,
-	}
-	return rect, nil
-}
-
-func (e Element) GetComputedStyle(style string, pseudoElt *string) (string, error) {
-	v, err := e.CallFunction(functionGetComputedStyle, true, false, []*runtime.CallArgument{
-		{Value: pseudoElt},
-		{Value: style},
-	})
-	if err != nil {
-		return "", err
-	}
-	return primitiveRemoteObject(*v).String()
-}
-
-func (e Element) SelectValues(values ...string) error {
-	if "SELECT" != e.node.NodeName {
-		return fmt.Errorf("can't use element as SELECT, not applicable type %s", e.node.NodeName)
-	}
-	_, err := e.CallFunction(functionSelect, true, false, NewSingleCallArgument(values))
-	if err != nil {
-		return err
-	}
-	return e.dispatchEvents(WebEventClick, WebEventInput, WebEventChange)
-}
-
-func (e Element) GetSelectedValues() ([]string, error) {
-	v, err := e.CallFunction(functionGetSelectedValues, true, false, nil)
-	if err != nil {
-		return nil, err
-	}
-	return e.stringArray(v)
-}
-
-func (e Element) GetSelectedText() ([]string, error) {
-	v, err := e.CallFunction(functionGetSelectedInnerText, true, false, nil)
-	if err != nil {
-		return nil, err
-	}
-	return e.stringArray(v)
-}
-
-func (e Element) stringArray(v *runtime.RemoteObject) ([]string, error) {
-	descriptor, err := e.frame.getProperties(v.ObjectId, true, false)
-	if err != nil {
-		return nil, err
-	}
-	var options []string
-	for _, d := range descriptor {
-		if !d.Enumerable {
-			continue
-		}
-		val, err1 := primitiveRemoteObject(*d.Value).String()
-		if err1 != nil {
-			return nil, err1
-		}
-		options = append(options, val)
-	}
-	return options, nil
+	return nil, ErrElementIsOutOfViewport
 }

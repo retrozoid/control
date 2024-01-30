@@ -1,4 +1,4 @@
-package control
+package v1
 
 import (
 	"encoding/json"
@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ecwid/control"
 	"github.com/ecwid/control/protocol/common"
 	"github.com/ecwid/control/protocol/page"
 	"github.com/ecwid/control/protocol/runtime"
@@ -110,7 +111,7 @@ func (f Frame) IsExist(selector string) bool {
 	if val == nil {
 		return false
 	}
-	b, _ := primitiveRemoteObject(*val).Bool()
+	b, _ := control.primitiveRemoteObject(*val).Bool()
 	return b
 }
 

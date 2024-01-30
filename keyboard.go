@@ -1,19 +1,10 @@
 package control
 
 import (
-	"sync"
 	"time"
 
+	"github.com/ecwid/control/protocol"
 	"github.com/ecwid/control/protocol/input"
-)
-
-const (
-	MouseNone    input.MouseButton = "none"
-	MouseLeft    input.MouseButton = "left"
-	MouseRight   input.MouseButton = "right"
-	MouseMiddle  input.MouseButton = "middle"
-	MouseBack    input.MouseButton = "back"
-	MouseForward input.MouseButton = "forward"
 )
 
 type KeyDefinition struct {
@@ -25,11 +16,6 @@ type KeyDefinition struct {
 	Text         string
 	ShiftText    string
 	Location     int
-}
-
-func isKey(r rune) bool {
-	_, ok := keyDefinitions[r]
-	return ok
 }
 
 var keyDefinitions = map[rune]KeyDefinition{
@@ -132,89 +118,51 @@ var keyDefinitions = map[rune]KeyDefinition{
 	'"':  {KeyCode: 222, Key: "\"", Code: "Quote"},
 }
 
-type Input struct {
-	mx *sync.Mutex
-	s  *Session
+func runeIsKey(r rune) (KeyDefinition, bool) {
+	value, ok := keyDefinitions[r]
+	return value, ok
 }
 
-func (i Input) Click(button input.MouseButton, x, y float64, delay time.Duration) (err error) {
-	i.mx.Lock()
-	defer i.mx.Unlock()
-	if err = i.MouseMove(MouseNone, x, y); err != nil {
-		return err
-	}
-	if err = i.MousePress(button, x, y); err != nil {
-		return err
-	}
-	time.Sleep(delay)
-	if err = i.MouseRelease(button, x, y); err != nil {
-		return err
-	}
-	return
+type Keyboard struct {
+	caller protocol.Caller
 }
 
-func (i Input) MouseMove(button input.MouseButton, x, y float64) error {
-	return input.DispatchMouseEvent(i.s, input.DispatchMouseEventArgs{
-		X:          x,
-		Y:          y,
-		Type:       "mouseMoved",
-		Button:     button,
-		ClickCount: 1,
-	})
+func NewKeyboard(caller protocol.Caller) Keyboard {
+	return Keyboard{caller: caller}
 }
 
-func (i Input) MousePress(button input.MouseButton, x, y float64) error {
-	return input.DispatchMouseEvent(i.s, input.DispatchMouseEventArgs{
-		X:          x,
-		Y:          y,
-		Type:       "mousePressed",
-		Button:     button,
-		ClickCount: 1,
-	})
-}
-
-func (i Input) MouseRelease(button input.MouseButton, x, y float64) error {
-	return input.DispatchMouseEvent(i.s, input.DispatchMouseEventArgs{
-		X:          x,
-		Y:          y,
-		Type:       "mouseReleased",
-		Button:     button,
-		ClickCount: 1,
-	})
-}
-
-// Keyboard events
-const (
-	dispatchKeyEventKeyDown = "keyDown"
-	dispatchKeyEventKeyUp   = "keyUp"
-)
-
-func (i Input) InsertText(text string) error {
-	return input.InsertText(i.s, input.InsertTextArgs{Text: text})
-}
-
-func (i Input) PressKey(c rune) error {
-	return i.Press(KeyDefinition{KeyCode: int(c), Text: string(c)})
-}
-
-func (i Input) Press(key KeyDefinition) error {
+func (k Keyboard) Down(key KeyDefinition) error {
 	if key.Text == "" {
 		key.Text = key.Key
 	}
-	err := input.DispatchKeyEvent(i.s, input.DispatchKeyEventArgs{
-		Type:                  dispatchKeyEventKeyDown,
-		Key:                   key.Key,
-		Code:                  key.Code,
+	return input.DispatchKeyEvent(k.caller, input.DispatchKeyEventArgs{
+		Type:                  "keyDown",
 		WindowsVirtualKeyCode: key.KeyCode,
+		Code:                  key.Code,
+		Key:                   key.Key,
 		Text:                  key.Text,
 	})
-	if err != nil {
+}
+
+func (k Keyboard) Up(key KeyDefinition) error {
+	return input.DispatchKeyEvent(k.caller, input.DispatchKeyEventArgs{
+		Type:                  "keyUp",
+		WindowsVirtualKeyCode: key.KeyCode,
+		Code:                  key.Code,
+		Key:                   key.Key,
+	})
+}
+
+func (k Keyboard) Insert(text string) error {
+	return input.InsertText(k.caller, input.InsertTextArgs{Text: text})
+}
+
+func (k Keyboard) Press(key KeyDefinition, delay time.Duration) (err error) {
+	if err = k.Down(key); err != nil {
 		return err
 	}
-	return input.DispatchKeyEvent(i.s, input.DispatchKeyEventArgs{
-		Type: dispatchKeyEventKeyUp,
-		Key:  key.Key,
-		Code: key.Code,
-		Text: key.Text,
-	})
+	if delay > 0 {
+		time.Sleep(delay)
+	}
+	return k.Up(key)
 }

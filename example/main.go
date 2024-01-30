@@ -1,64 +1,30 @@
 package main
 
 import (
-	"context"
 	"log"
-	"time"
 
 	"github.com/ecwid/control"
-	"github.com/ecwid/control/chrome"
-	"github.com/ecwid/control/transport"
+	"github.com/ecwid/control/backoff"
 )
 
 func main() {
-
-	chromium, err := chrome.Launch(context.TODO(), "--disable-popup-blocking") // you can specify more startup parameters for chrome
+	session, dfr, err := control.Take("--no-startup-window")
 	if err != nil {
 		panic(err)
 	}
-	defer chromium.Close()
-	ctrl := control.New(chromium.GetClient())
-	ctrl.Client.Timeout = time.Second * 60
+	defer dfr()
 
-	go func() {
-		s1, err := ctrl.CreatePageTarget("")
-		if err != nil {
-			panic(err)
-		}
-		cancel := s1.Subscribe("Page.domContentEventFired", func(e transport.Event) error {
-			v, err1 := s1.Page().GetNavigationEntry()
-			log.Println(v)
-			log.Println(err1)
-			return err1
-		})
-		defer cancel()
-		if err = s1.Page().Navigate("https://google.com/", control.LifecycleIdleNetwork, time.Second*60); err != nil {
-			panic(err)
-		}
-	}()
-
-	session, err := ctrl.CreatePageTarget("")
+	err = session.Navigate("https://zoid.ecwid.com")
 	if err != nil {
 		panic(err)
 	}
 
-	var page = session.Page() // main frame
-	err = page.Navigate("https://surfparadise.ecwid.com/", control.LifecycleIdleNetwork, time.Second*60)
-	if err != nil {
-		panic(err)
-	}
+	val := backoff.Value(func() (string, error) {
+		return session.Query(".pager__count-pages").GetTextContent()
+	})
+	log.Println(val)
 
-	_ = session.Activate()
-
-	items, err := page.QuerySelectorAll(".grid-product__title-inner")
-	if err != nil {
-		panic(err)
-	}
-	for _, i := range items {
-		title, err := i.GetText()
-		if err != nil {
-			panic(err)
-		}
-		log.Print(title)
-	}
+	backoff.Exec(func() error {
+		return session.Query(`.pager__count-pages`).Click()
+	})
 }

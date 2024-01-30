@@ -1,4 +1,4 @@
-package control
+package v1
 
 import (
 	"github.com/ecwid/control/mobile"

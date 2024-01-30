@@ -1,64 +1,85 @@
 package control
 
 import (
-	"github.com/ecwid/control/protocol/browser"
+	"errors"
+	"strings"
+
+	"github.com/ecwid/control/protocol/common"
 	"github.com/ecwid/control/protocol/page"
 )
 
-// CaptureScreenshot get screen of current page
-func (s Session) CaptureScreenshot(format string, quality int, clip *page.Viewport, fromSurface, captureBeyondViewport bool) ([]byte, error) {
-	val, err := page.CaptureScreenshot(s, page.CaptureScreenshotArgs{
-		Format:                format,
-		Quality:               quality,
-		Clip:                  clip,
-		FromSurface:           fromSurface,
-		CaptureBeyondViewport: captureBeyondViewport,
+type Frame struct {
+	session *Session
+	id      common.FrameId
+}
+
+func (f Frame) executionContextID() string {
+	// todo retry
+	return f.session.frames.Get(f.id)
+}
+
+func (f Frame) Call(method string, send, recv any) error {
+	return f.session.Call(method, send, recv)
+}
+
+func (f Frame) Navigate(url string) error {
+	future := MakeFuture(f.session, "Page.loadEventFired", func(_ page.LoadEventFired) bool {
+		return true
+	})
+	defer future.Cancel()
+	nav, err := page.Navigate(f, page.NavigateArgs{
+		Url:     url,
+		FrameId: f.id,
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return val.Data, nil
+	if nav.ErrorText != "" {
+		return errors.New(nav.ErrorText)
+	}
+	if nav.LoaderId == "" {
+		return nil
+	}
+	_, err = future.Get()
+	return err
 }
 
-// AddScriptToEvaluateOnNewDocument https://chromedevtools.github.io/devtools-protocol/tot/Page#method-addScriptToEvaluateOnNewDocument
-func (s Session) AddScriptToEvaluateOnNewDocument(source string) (page.ScriptIdentifier, error) {
-	val, err := page.AddScriptToEvaluateOnNewDocument(s, page.AddScriptToEvaluateOnNewDocumentArgs{
-		Source: source,
+func (f Frame) Reload(ignoreCache bool, scriptToEvaluateOnLoad string) error {
+	future := MakeFuture(f.session, "Page.loadEventFired", func(_ page.LoadEventFired) bool {
+		return true
+	})
+	defer future.Cancel()
+	err := page.Reload(f, page.ReloadArgs{
+		IgnoreCache:            ignoreCache,
+		ScriptToEvaluateOnLoad: scriptToEvaluateOnLoad,
 	})
 	if err != nil {
-		return "", err
+		return err
 	}
-	return val.Identifier, nil
+	_, err = future.Get()
+	return err
 }
 
-// RemoveScriptToEvaluateOnNewDocument https://chromedevtools.github.io/devtools-protocol/tot/Page#method-removeScriptToEvaluateOnNewDocument
-func (s Session) RemoveScriptToEvaluateOnNewDocument(identifier page.ScriptIdentifier) error {
-	return page.RemoveScriptToEvaluateOnNewDocument(s, page.RemoveScriptToEvaluateOnNewDocumentArgs{
-		Identifier: identifier,
-	})
+func safeSelector(v string) string {
+	v = strings.TrimSpace(v)
+	v = strings.ReplaceAll(v, `"`, `\"`)
+	return v
 }
 
-// SetDownloadBehavior https://chromedevtools.github.io/devtools-protocol/tot/Page#method-setDownloadBehavior
-func (s Session) SetDownloadBehavior(behavior string, downloadPath string, eventsEnabled bool) error {
-	return browser.SetDownloadBehavior(s, browser.SetDownloadBehaviorArgs{
-		Behavior:      behavior,
-		DownloadPath:  downloadPath,
-		EventsEnabled: eventsEnabled, // default false
-	})
+func (f Frame) Query(cssSelector string) OptionalNode {
+	value, err := f.Evaluate(`document.querySelector("`+safeSelector(cssSelector)+`")`, true)
+	return toOptionalNode(value, err)
 }
 
-// HandleJavaScriptDialog ...
-func (s Session) HandleJavaScriptDialog(accept bool, promptText string) error {
-	return page.HandleJavaScriptDialog(s, page.HandleJavaScriptDialogArgs{
-		Accept:     accept,
-		PromptText: promptText,
-	})
+func (f Frame) QueryAll(cssSelector string) OptionalNode {
+	value, err := f.Evaluate(`document.querySelectorAll("`+safeSelector(cssSelector)+`")`, true)
+	return toOptionalNode(value, err)
 }
 
-func (s Session) GetLayoutMetrics() (*page.GetLayoutMetricsVal, error) {
-	view, err := page.GetLayoutMetrics(s)
-	if err != nil {
-		return nil, err
-	}
-	return view, nil
+func (f Frame) Click(point Point) error {
+	return NewMouse(f).Click(MouseLeft, point)
+}
+
+func (f Frame) Hover(point Point) error {
+	return NewMouse(f).Move(MouseNone, point)
 }

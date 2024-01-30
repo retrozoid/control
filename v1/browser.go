@@ -1,9 +1,10 @@
-package control
+package v1
 
 import (
 	"context"
 	"sync"
 
+	"github.com/ecwid/control"
 	"github.com/ecwid/control/protocol/browser"
 	"github.com/ecwid/control/protocol/network"
 	"github.com/ecwid/control/protocol/page"
@@ -59,7 +60,7 @@ func (b BrowserContext) runSession(targetID target.TargetID, sessionID target.Se
 	if err = runtime.Enable(session); err != nil {
 		return nil, err
 	}
-	if err = runtime.AddBinding(session, runtime.AddBindingArgs{Name: bindClick}); err != nil {
+	if err = runtime.AddBinding(session, runtime.AddBindingArgs{Name: control.bindClick}); err != nil {
 		return nil, err
 	}
 	if err = page.SetLifecycleEventsEnabled(session, page.SetLifecycleEventsEnabledArgs{Enabled: true}); err != nil {
