@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/retrozoid/control/cdp"
@@ -12,6 +13,7 @@ import (
 	"github.com/retrozoid/control/protocol/common"
 	"github.com/retrozoid/control/protocol/dom"
 	"github.com/retrozoid/control/protocol/network"
+	"github.com/retrozoid/control/protocol/overlay"
 	"github.com/retrozoid/control/protocol/page"
 	"github.com/retrozoid/control/protocol/runtime"
 	"github.com/retrozoid/control/protocol/target"
@@ -19,6 +21,7 @@ import (
 
 // The Longest post body size (in bytes) that would be included in requestWillBeSent notification
 var MaxPostDataSize = 20 * 1024 // 20KB
+var DebugOverlays = true
 
 const Blank = "about:blank"
 
@@ -43,21 +46,35 @@ func mustUnmarshal[T any](u cdp.Message) T {
 }
 
 type Session struct {
-	Timeout   time.Duration
+	timeout   time.Duration
 	context   context.Context
 	transport *cdp.Transport
 	targetID  target.TargetID
 	sessionID string
 	frames    *syncFrames
-	Frame
+	Frame     Frame
 }
 
 func (s *Session) Transport() *cdp.Transport {
 	return s.transport
 }
 
+func (s *Session) Log(level slog.Level, msg string, args ...any) {
+	args = append(args, "sessionId", s.sessionID)
+	s.transport.Log(level, msg, args...)
+}
+
 func (s *Session) GetID() string {
 	return s.sessionID
+}
+
+func (s *Session) IsContextDone() error {
+	select {
+	case <-s.context.Done():
+		return nil
+	default:
+		return errors.New("session is not done")
+	}
 }
 
 func (s *Session) Call(method string, send, recv any) error {
@@ -67,13 +84,13 @@ func (s *Session) Call(method string, send, recv any) error {
 	default:
 	}
 	future := s.transport.Send(&cdp.Request{
-		SessionID: s.sessionID,
+		SessionID: string(s.sessionID),
 		Method:    method,
 		Params:    send,
 	})
 	defer future.Cancel()
 
-	ctxTo, cancel := context.WithTimeout(s.context, s.Timeout)
+	ctxTo, cancel := context.WithTimeout(s.context, s.timeout)
 	defer cancel()
 	value, err := future.Get(ctxTo)
 	if err != nil {
@@ -100,7 +117,7 @@ func NewSession(transport *cdp.Transport, targetID target.TargetID) (*Session, e
 	var session = &Session{
 		transport: transport,
 		targetID:  targetID,
-		Timeout:   60 * time.Second,
+		timeout:   60 * time.Second,
 		frames:    &syncFrames{value: make(map[common.FrameId]string)},
 	}
 	session.Frame = Frame{
@@ -142,6 +159,11 @@ func NewSession(transport *cdp.Transport, targetID target.TargetID) (*Session, e
 	if err = network.Enable(session, network.EnableArgs{MaxPostDataSize: MaxPostDataSize}); err != nil {
 		return nil, err
 	}
+	if DebugOverlays {
+		if err = overlay.Enable(session); err != nil {
+			return nil, err
+		}
+	}
 	return session, nil
 }
 
@@ -159,7 +181,10 @@ func (s *Session) handle(message cdp.Message) error {
 		s.frames.Remove(frameDetached.FrameId)
 
 	case "Target.detachedFromTarget":
-		return ErrTargetDetached
+		detachedFromTarget := mustUnmarshal[target.DetachedFromTarget](message)
+		if s.sessionID == string(detachedFromTarget.SessionId) {
+			return ErrTargetDetached
+		}
 
 	case "Target.targetDestroyed":
 		targetDestroyed := mustUnmarshal[target.TargetDestroyed](message)
@@ -206,6 +231,10 @@ func (s *Session) GetTargetCreated() FutureWithDeadline[target.TargetCreated] {
 	})
 }
 
+func (s *Session) AttachToTarget(id target.TargetID) (*Session, error) {
+	return NewSession(s.transport, id)
+}
+
 func (s *Session) CreatePageTargetTab(url string) (*Session, error) {
 	if url == "" {
 		url = Blank // headless chrome crash when url is empty
@@ -214,7 +243,7 @@ func (s *Session) CreatePageTargetTab(url string) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewSession(s.transport, r.TargetId)
+	return s.AttachToTarget(r.TargetId)
 }
 
 func (s *Session) ActivateTarget(id target.TargetID) error {

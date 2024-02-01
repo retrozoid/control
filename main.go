@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -17,7 +17,7 @@ func Take(args ...string) (session *Session, dfr func(), err error) {
 	return TakeWithContext(context.TODO(), nil, args...)
 }
 
-func TakeWithContext(ctx context.Context, logger *log.Logger, chromeArgs ...string) (session *Session, dfr func(), err error) {
+func TakeWithContext(ctx context.Context, logger *slog.Logger, chromeArgs ...string) (session *Session, dfr func(), err error) {
 	browser, err := chrome.Launch(ctx, chromeArgs...)
 	if err != nil {
 		return nil, nil, errors.Join(err, errors.New("chrome launch failed"))
@@ -36,10 +36,14 @@ func TakeWithContext(ctx context.Context, logger *log.Logger, chromeArgs ...stri
 	}
 	teardown := func() {
 		if err := transport.Close(); err != nil {
-			log.Println(err)
+			if logger != nil {
+				logger.Error("can't close transport", "err", err)
+			}
 		}
 		if err = browser.WaitCloseGracefully(); err != nil {
-			log.Println(err)
+			if logger != nil {
+				logger.Error("can't close browser gracefully", "err", err)
+			}
 		}
 	}
 	return session, teardown, nil
@@ -88,7 +92,7 @@ func MakeFuture[T any](s *Session, method string, filter func(T) bool) FutureWit
 	}()
 	return deadlineFuture[T]{
 		context:  s.context,
-		deadline: s.Timeout,
+		deadline: s.timeout,
 		future:   future,
 	}
 }

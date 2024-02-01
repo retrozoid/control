@@ -38,103 +38,81 @@ func (r remoteObjectId) ObjectID() runtime.RemoteObjectId {
 	return runtime.RemoteObjectId(r)
 }
 
-type node struct {
+type Node struct {
 	JsObject
-	frame Frame
-}
-
-type Optional[T any] struct {
-	Value T
-	Err   error
-}
-
-type OptionalNode Optional[node]
-type OptionalNodes Optional[[]node]
-
-func toOptionalNode(value any, err error) OptionalNode {
-	if err != nil {
-		return OptionalNode{Err: err}
-	}
-	if value == nil {
-		return OptionalNode{Err: ErrElementNotFound}
-	}
-	if n, ok := value.(node); ok {
-		return OptionalNode{Value: n}
-	}
-	return OptionalNode{Err: ErrElementIsNotNode}
-}
-
-func (e OptionalNode) ObjectID() runtime.RemoteObjectId {
-	if e.Err == nil {
-		return e.Value.ObjectID()
-	}
-	return ""
-}
-
-func (e OptionalNode) Call(method string, send, recv interface{}) error {
-	if e.Err != nil {
-		return e.Err
-	}
-	return e.Value.frame.Call(method, send, recv)
-}
-
-func (e OptionalNode) eval(function string, args ...any) (any, error) {
-	if e.Err != nil {
-		return nil, e.Err
-	}
-	return e.Value.frame.callFunctionOn(e, function, true, args...)
-}
-
-func (e OptionalNode) asyncEval(function string, args ...any) (JsObject, error) {
-	if e.Err != nil {
-		return nil, e.Err
-	}
-	value, err := e.Value.frame.callFunctionOn(e, function, false, args...)
-	if err != nil {
-		return nil, err
-	}
-	return value.(JsObject), nil
+	cssSelector string
+	frame       Frame
 }
 
 func getNodeType(deepSerializedValue any) nodeType {
 	return nodeType(deepSerializedValue.(map[string]any)["nodeType"].(float64))
 }
 
-type evalValue struct {
-	Result           *runtime.RemoteObject
-	ExceptionDetails *runtime.ExceptionDetails
-}
+// + undefined, null, string, number, boolean, promise, node, array
+// - bigint, regexp, date, symbol, object, function, map, set, weakmap, weakset, error, proxy, typedarray, arraybuffer, window
 
-func (f Frame) unserialize(value evalValue) (any, error) {
-	if value.ExceptionDetails != nil {
-		return nil, DOMException(value.ExceptionDetails.Exception.Description)
+func (f Frame) unserialize(value *runtime.RemoteObject) (any, error) {
+	if value == nil {
+		return nil, errors.New("can't unserialize nil RemoteObject")
 	}
-	if value.Result.DeepSerializedValue == nil {
-		return value.Result.Value, nil
+	if value.DeepSerializedValue == nil {
+		return value.Value, nil
 	}
-	deepSerializedValue := value.Result.DeepSerializedValue
+	deepSerializedValue := value.DeepSerializedValue
+
 	switch deepSerializedValue.Type {
+
 	case "undefined", "null", "string", "number", "boolean":
 		return deepSerializedValue.Value, nil
+
 	case "promise":
-		return remoteObjectId(value.Result.ObjectId), nil
+		return remoteObjectId(value.ObjectId), nil
+
 	case "node":
 		switch getNodeType(deepSerializedValue.Value) {
 		case nodeTypeElement, nodeTypeDocument:
-			return node{
-				JsObject: remoteObjectId(value.Result.ObjectId),
-				frame:    f,
-			}, nil
+			return Node{JsObject: remoteObjectId(value.ObjectId), frame: f}, nil
 		default:
 			return nil, errors.New("unsupported type of node")
 		}
+
+	case "nodelist":
+		if value.Description == "NodeList(0)" {
+			return nil, nil
+		}
+		descriptor, err := f.getProperties(remoteObjectId(value.ObjectId), true, false, false, false)
+		if err != nil {
+			return nil, err
+		}
+		var list []Node
+		for _, d := range descriptor.Result {
+			if d.Enumerable {
+				n := Node{
+					JsObject:    remoteObjectId(d.Value.ObjectId),
+					cssSelector: d.Value.Description + "(" + d.Name + ")",
+					frame:       f,
+				}
+				list = append(list, n)
+			}
+		}
+		return list, nil
+
+	case "array":
+		array := value.DeepSerializedValue.Value.([]any)
+		var t = make([]any, len(array))
+		for n, a := range array {
+			t[n] = a.(map[string]any)["value"]
+		}
+		return t, nil
+
+	case "object":
+		//  [[x map[type:number value:543.8359375]] [y map[type:number value:5211.6328125]] [width map[type:number value:112.3203125]] [height map[type:number value:22.3984375]]]
+		return value.DeepSerializedValue.Value.(map[string]any), nil
+
 	default:
-		return value.Result.Value, nil
+		return value.Value, nil
 	}
 }
-
-// undefined, null, string, number, boolean, promise, node
-//bigint, regexp, date, symbol, array, object, function, map, set, weakmap, weakset, error, proxy, typedarray, arraybuffer, window
 
 func (f Frame) Evaluate(expression string, awaitPromise bool) (any, error) {
 	var uid = f.executionContextID()
@@ -146,7 +124,7 @@ func (f Frame) Evaluate(expression string, awaitPromise bool) (any, error) {
 		IncludeCommandLineAPI: true,
 		UniqueContextId:       uid,
 		AwaitPromise:          awaitPromise,
-		Timeout:               runtime.TimeDelta(f.session.Timeout.Milliseconds()),
+		Timeout:               runtime.TimeDelta(f.session.timeout.Milliseconds()),
 		SerializationOptions: &runtime.SerializationOptions{
 			Serialization: "deep",
 		},
@@ -154,13 +132,13 @@ func (f Frame) Evaluate(expression string, awaitPromise bool) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return f.unserialize(evalValue{
-		Result:           value.Result,
-		ExceptionDetails: value.ExceptionDetails,
-	})
+	if err = toDOMException(value.ExceptionDetails); err != nil {
+		return nil, err
+	}
+	return f.unserialize(value.Result)
 }
 
-func (f Frame) awaitPromise(promise JsObject) (any, error) {
+func (f Frame) AwaitPromise(promise JsObject) (any, error) {
 	value, err := runtime.AwaitPromise(f, runtime.AwaitPromiseArgs{
 		PromiseObjectId: promise.ObjectID(),
 		ReturnByValue:   false,
@@ -169,10 +147,10 @@ func (f Frame) awaitPromise(promise JsObject) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return f.unserialize(evalValue{
-		Result:           value.Result,
-		ExceptionDetails: value.ExceptionDetails,
-	})
+	if err = toDOMException(value.ExceptionDetails); err != nil {
+		return nil, err
+	}
+	return f.unserialize(value.Result)
 }
 
 func (f Frame) eval(node JsObject, function string, args ...any) (any, error) {
@@ -187,7 +165,7 @@ func (f Frame) asyncEval(node JsObject, function string, args ...any) (JsObject,
 	return value.(JsObject), nil
 }
 
-func (f Frame) callFunctionOn(this JsObject, function string, awaitPromise bool, args ...any) (any, error) {
+func (f Frame) callFunctionOn(self JsObject, function string, awaitPromise bool, args ...any) (any, error) {
 	var arguments []*runtime.CallArgument
 	for _, arg := range args {
 		callArg := &runtime.CallArgument{}
@@ -201,7 +179,7 @@ func (f Frame) callFunctionOn(this JsObject, function string, awaitPromise bool,
 	}
 	value, err := runtime.CallFunctionOn(f, runtime.CallFunctionOnArgs{
 		FunctionDeclaration: function,
-		ObjectId:            this.ObjectID(),
+		ObjectId:            self.ObjectID(),
 		AwaitPromise:        awaitPromise,
 		Arguments:           arguments,
 		SerializationOptions: &runtime.SerializationOptions{
@@ -211,8 +189,32 @@ func (f Frame) callFunctionOn(this JsObject, function string, awaitPromise bool,
 	if err != nil {
 		return nil, err
 	}
-	return f.unserialize(evalValue{
-		Result:           value.Result,
-		ExceptionDetails: value.ExceptionDetails,
+	if err = toDOMException(value.ExceptionDetails); err != nil {
+		return nil, err
+	}
+	return f.unserialize(value.Result)
+}
+
+func (f Frame) getProperties(self JsObject, ownProperties, accessorPropertiesOnly, generatePreview, nonIndexedPropertiesOnly bool) (*runtime.GetPropertiesVal, error) {
+	value, err := runtime.GetProperties(f, runtime.GetPropertiesArgs{
+		ObjectId:                 self.ObjectID(),
+		OwnProperties:            ownProperties,
+		AccessorPropertiesOnly:   accessorPropertiesOnly,
+		GeneratePreview:          generatePreview,
+		NonIndexedPropertiesOnly: nonIndexedPropertiesOnly,
 	})
+	if err != nil {
+		return nil, err
+	}
+	if err = toDOMException(value.ExceptionDetails); err != nil {
+		return nil, err
+	}
+	return value, nil
+}
+
+func toDOMException(value *runtime.ExceptionDetails) error {
+	if value != nil && value.Exception != nil {
+		return DOMException(value.Exception.Description)
+	}
+	return nil
 }

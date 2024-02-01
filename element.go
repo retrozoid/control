@@ -3,24 +3,31 @@ package control
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 
 	"github.com/retrozoid/control/protocol/dom"
+	"github.com/retrozoid/control/protocol/runtime"
 )
 
 var (
-	ErrElementNotFound        = errors.New("element not found")
-	ErrElementNotVisible      = errors.New("element not visible")
-	ErrElementIsNotNode       = errors.New("element is not node")
-	ErrElementIsOutOfViewport = errors.New("element is out of viewport")
+	ErrElementNotVisible           = errors.New("element not visible")
+	ErrMismatchTypeDeserialization = errors.New("mismatch type of remote object")
+	ErrElementIsOutOfViewport      = errors.New("element is out of viewport")
+	ErrIterNoResult                = errors.New("no filter result")
 )
+
+type NoSuchSelectorError string
+
+func (s NoSuchSelectorError) Error() string {
+	return fmt.Sprintf("no such selector found: `%s`", string(s))
+}
 
 type Point struct {
 	X float64
 	Y float64
 }
 
-// Quad quad
 type Quad []Point
 
 func convertQuads(dq []dom.Quad) []Quad {
@@ -62,15 +69,68 @@ func (q Quad) Area() float64 {
 	return math.Abs(area)
 }
 
-func (e OptionalNode) Query(cssSelector string) OptionalNode {
-	value, err := e.eval(`function(s){return this.querySelector(s)}`, safeSelector(cssSelector))
-	return toOptionalNode(value, err)
+func (e Node) ObjectID() runtime.RemoteObjectId {
+	return e.JsObject.ObjectID()
 }
 
-func (e OptionalNode) AsFrame() (Frame, error) {
-	if e.Err != nil {
-		return Frame{}, e.Err
+func (e Node) OwnFrame() Frame {
+	return e.frame
+}
+
+func (e Node) Call(method string, send, recv interface{}) error {
+	return e.frame.Call(method, send, recv)
+}
+
+func (e Node) eval(function string, args ...any) (any, error) {
+	return e.frame.callFunctionOn(e, function, true, args...)
+}
+
+func (e Node) asyncEval(function string, args ...any) (JsObject, error) {
+	value, err := e.frame.callFunctionOn(e, function, false, args...)
+	if err != nil {
+		return nil, err
 	}
+	return value.(JsObject), nil
+}
+
+func (e Node) dispatchEvents(events ...any) error {
+	_, err := e.eval(`function(l){for(const e of l)this.dispatchEvent(new Event(e,{'bubbles':!0}))}`, events...)
+	return err
+}
+
+func (e Node) info(msg string, args ...any) {
+	e.frame.session.Log(slog.LevelInfo, msg, args...)
+}
+
+func (e Node) query(cssSelector string) (any, error) {
+	cssSelector = safeSelector(cssSelector)
+	return e.eval(`function(s){return this.querySelector(s)}`, cssSelector)
+
+}
+
+func (e Node) Query(cssSelector string) MaybeNode {
+	cssSelector = safeSelector(cssSelector)
+	value, err := e.eval(`function(s){return this.querySelector(s)}`, cssSelector)
+	node := e.frame.newNode(cssSelector, value, err)
+	e.info("Query", "self", e.cssSelector, "cssSelector", cssSelector, "err", node.Err)
+	return node
+}
+
+func (e Node) QueryAll(cssSelector string) MaybeNodes {
+	cssSelector = safeSelector(cssSelector)
+	value, err := e.eval(`function(s){return this.querySelectorAll(s)}`, cssSelector)
+	nodes := e.frame.newNodes(cssSelector, value, err)
+	e.info("QueryAll", "self", e.cssSelector, "cssSelector", cssSelector, "err", nodes.Err)
+	return nodes
+}
+
+func (e Node) AsFrame() (Frame, error) {
+	f, err := e.asFrame()
+	e.info("Frame", "self", e.cssSelector, "value", f, "err", err)
+	return f, err
+}
+
+func (e Node) asFrame() (Frame, error) {
 	value, err := dom.DescribeNode(e, dom.DescribeNodeArgs{
 		ObjectId: e.ObjectID(),
 	})
@@ -79,49 +139,57 @@ func (e OptionalNode) AsFrame() (Frame, error) {
 	}
 	result := Frame{
 		id:      value.Node.FrameId,
-		session: e.Value.frame.session,
+		session: e.frame.session,
 	}
 	return result, nil
 }
 
-func (e OptionalNode) ScrollIntoView() error {
-	if e.Err != nil {
-		return e.Err
-	}
-	return dom.ScrollIntoViewIfNeeded(e, dom.ScrollIntoViewIfNeededArgs{ObjectId: e.ObjectID()})
+func (e Node) ScrollIntoView() error {
+	return dom.ScrollIntoViewIfNeeded(e, dom.ScrollIntoViewIfNeededArgs{
+		ObjectId: e.ObjectID(),
+	})
 }
 
-func (e OptionalNode) GetTextContent() (string, error) {
+func (e Node) GetTextContent() (string, error) {
 	value, err := e.eval(`function(){return this.textContent.trim()}`)
 	if err != nil {
 		return "", err
 	}
+	e.info("GetTextContent", "self", e.cssSelector, "textContent", value, "err", err)
 	return value.(string), nil
 }
 
-func (e OptionalNode) Focus() error {
-	if e.Err != nil {
-		return e.Err
-	}
-	return dom.Focus(e, dom.FocusArgs{ObjectId: e.ObjectID()})
-}
-
-func (e OptionalNode) Blur() error {
-	_, err := e.eval(`function(){this.blur()}`)
+func (e Node) Focus() error {
+	err := dom.Focus(e, dom.FocusArgs{
+		ObjectId: e.ObjectID(),
+	})
+	e.info("Focus", "self", e.cssSelector, "err", err)
 	return err
 }
 
-func (e OptionalNode) InsertText(value string) (err error) {
+func (e Node) Blur() error {
+	_, err := e.eval(`function(){this.blur()}`)
+	e.info("Blur", "self", e.cssSelector, "err", err)
+	return err
+}
+
+func (e Node) InsertText(value string) (err error) {
+	defer e.info("InsertText", "self", e.cssSelector, "value", value, "err", &err)
 	if err = e.Focus(); err != nil {
 		return err
 	}
 	if err = NewKeyboard(e).Insert(value); err != nil {
 		return err
 	}
-	return e.Blur() // to fire change event
+	if err = e.dispatchEvents("input", "change"); err != nil {
+		return err
+	}
+	err = e.Blur() // to fire change event
+	return err
 }
 
-func (e OptionalNode) SetValue(value string) (err error) {
+func (e Node) SetValue(value string) (err error) {
+	defer e.info("SetValue", "self", e.cssSelector, "value", value, "err", &err)
 	if err = e.ClearValue(); err != nil {
 		return err
 	}
@@ -129,35 +197,49 @@ func (e OptionalNode) SetValue(value string) (err error) {
 	return
 }
 
-func (e OptionalNode) ClearValue() error {
-	_, err := e.eval(`function(){this.value=''}`)
+func (e Node) ClearValue() (err error) {
+	defer e.info("ClearValue", "self", e.cssSelector, "err", &err)
+	_, err = e.eval(`function(){this.value=''}`)
+	if err != nil {
+		return err
+	}
+	if err = e.dispatchEvents("input", "change"); err != nil {
+		return err
+	}
+	err = e.Blur()
 	return err
 }
 
-func (e OptionalNode) Visible() bool {
+func (e Node) Visible() bool {
 	value, err := e.eval(`function(){return this.checkVisibility()}`)
+	e.info("Visible", "self", e.cssSelector, "is_visible", value, "err", err)
 	if err != nil {
 		return false
 	}
 	return value.(bool)
 }
 
-func (e OptionalNode) Upload(files ...string) error {
-	if e.Err != nil {
-		return e.Err
-	}
-	return dom.SetFileInputFiles(e, dom.SetFileInputFilesArgs{
+func (e Node) Upload(files ...string) (err error) {
+	err = dom.SetFileInputFiles(e, dom.SetFileInputFilesArgs{
 		ObjectId: e.ObjectID(),
 		Files:    files,
 	})
+	e.info("Upload", "self", e.cssSelector, "files", files, "err", err)
+	return err
 }
 
-func (e OptionalNode) addEventListener(name string) (JsObject, error) {
-	eval := fmt.Sprintf(`()=>new Promise(e=>{let t=i=>{this.removeEventListener('%s',t),e(i)};this.addEventListener('%s',t)})`, name, name)
+func (e Node) addEventListener(name string) (JsObject, error) {
+	eval := fmt.Sprintf(`()=>new Promise(e=>{let t=i=>{this.removeEventListener('%s',t),e(i)};this.addEventListener('%s',t,{capture:!0})})`, name, name)
 	return e.asyncEval(eval)
 }
 
-func (e OptionalNode) Click() (err error) {
+func (e Node) Click() error {
+	err := e.click()
+	e.info("Click", "self", e.cssSelector, "err", err)
+	return err
+}
+
+func (e Node) click() (err error) {
 	if err = e.ScrollIntoView(); err != nil {
 		return err
 	}
@@ -165,18 +247,49 @@ func (e OptionalNode) Click() (err error) {
 	if err != nil {
 		return err
 	}
+	// layout, err := e.frame.GetLayoutMetrics()
+	// if err != nil {
+	// 	return err
+	// }
+	// nodeForLocation, err := dom.GetNodeForLocation(e, dom.GetNodeForLocationArgs{
+	// 	X:                         int(point.X) + layout.CssLayoutViewport.PageX,
+	// 	Y:                         int(point.Y) + layout.CssLayoutViewport.PageY,
+	// 	IncludeUserAgentShadowDOM: true,
+	// 	IgnorePointerEventsNone:   true,
+	// })
+	// if err != nil {
+	// 	return err
+	// }
+	// if nodeForLocation.FrameId != e.frame.id {
+	// 	return ErrClickOverlayFrame
+	// }
+	// self, err := dom.DescribeNode(e, dom.DescribeNodeArgs{
+	// 	ObjectId: e.ObjectID(),
+	// })
+	// if err != nil {
+	// 	return err
+	// }
+	// if nodeForLocation.BackendNodeId != self.Node.BackendNodeId {
+	// 	overlay, err := dom.DescribeNode(e, dom.DescribeNodeArgs{
+	// 		BackendNodeId: nodeForLocation.BackendNodeId,
+	// 	})
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	return OverlapError{Node: overlay.Node}
+	// }
 	promise, err := e.addEventListener("click")
 	if err != nil {
 		return err
 	}
-	if err = e.Value.frame.Click(point); err != nil {
+	if err = e.frame.Click(point); err != nil {
 		return err
 	}
-	_, err = e.Value.frame.awaitPromise(promise)
+	_, err = e.frame.AwaitPromise(promise)
 	return err
 }
 
-func (e OptionalNode) ClickablePoint() (Point, error) {
+func (e Node) ClickablePoint() (Point, error) {
 	r, err := e.GetContentQuad()
 	if err != nil {
 		return Point{}, err
@@ -184,10 +297,29 @@ func (e OptionalNode) ClickablePoint() (Point, error) {
 	return r.Middle(), nil
 }
 
-func (e OptionalNode) GetContentQuad() (Quad, error) {
-	if e.Err != nil {
-		return nil, e.Err
+// Deprecated
+func (e Node) GetViewportRect() (dom.Rect, error) {
+	var r = dom.Rect{}
+	value, err := e.eval(`function() {
+		const e = this.getBoundingClientRect(), t = this.ownerDocument.documentElement.getBoundingClientRect();
+		return [e.left - t.left, e.top - t.top, e.width, e.height];
+	}`)
+	if err != nil {
+		return r, err
 	}
+	if tuple, ok := value.([]any); ok {
+		r = dom.Rect{
+			X:      tuple[0].(float64),
+			Y:      tuple[1].(float64),
+			Width:  tuple[2].(float64),
+			Height: tuple[3].(float64),
+		}
+		return r, nil
+	}
+	return r, ErrMismatchTypeDeserialization
+}
+
+func (e Node) GetContentQuad() (Quad, error) {
 	val, err := dom.GetContentQuads(e, dom.GetContentQuadsArgs{
 		ObjectId: e.ObjectID(),
 	})
@@ -206,10 +338,51 @@ func (e OptionalNode) GetContentQuad() (Quad, error) {
 	return nil, ErrElementIsOutOfViewport
 }
 
-func (e OptionalNode) Hover() (err error) {
-	p, err := e.ClickablePoint()
+func (e Node) Hover() (err error) {
+	defer e.info("Hover", "self", e.cssSelector, "err", &err)
+	var p Point
+	p, err = e.ClickablePoint()
 	if err != nil {
 		return err
 	}
-	return e.Value.frame.Hover(p)
+	err = e.frame.Hover(p)
+	return err
+}
+
+func (e Node) GetComputedStyle(style string, pseudo string) (string, error) {
+	var pseudoVar any = nil
+	if pseudo != "" {
+		pseudoVar = pseudo
+	}
+	value, err := e.eval(`function(p,s){return getComputedStyle(this, p)[s]}`, pseudoVar, style)
+	e.info("GetComputedStyle", "self", e.cssSelector, "style", style, "pseudo", pseudo, "value", value, "err", err)
+	if err != nil {
+		return "", err
+	}
+	return value.(string), nil
+}
+
+func (nodes Nodes) Map(mapFn func(Node) (string, error)) ([]string, error) {
+	var r = make([]string, len(nodes))
+	var err error
+	for n := range nodes {
+		r[n], err = mapFn(nodes[n])
+		if err != nil {
+			return r, err
+		}
+	}
+	return r, nil
+}
+
+func (nodes Nodes) First(pred func(Node) (bool, error)) Node {
+	for n := range nodes {
+		ok, err := pred(nodes[n])
+		if err != nil {
+			panic(err)
+		}
+		if ok {
+			return nodes[n]
+		}
+	}
+	panic(ErrIterNoResult)
 }

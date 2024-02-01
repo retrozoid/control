@@ -3,7 +3,7 @@ package cdp
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -26,14 +26,14 @@ type Transport struct {
 	pending map[uint64]responsePromise
 	mutex   sync.Mutex
 	broker  broker
-	logger  *log.Logger
+	logger  *slog.Logger
 }
 
-func DefaultDial(context context.Context, url string, logger *log.Logger) (*Transport, error) {
+func DefaultDial(context context.Context, url string, logger *slog.Logger) (*Transport, error) {
 	return Dial(context, DefaultDialer, url, logger)
 }
 
-func Dial(parent context.Context, dialer websocket.Dialer, url string, logger *log.Logger) (*Transport, error) {
+func Dial(parent context.Context, dialer websocket.Dialer, url string, logger *slog.Logger) (*Transport, error) {
 	conn, _, err := dialer.Dial(url, nil)
 	if err != nil {
 		return nil, err
@@ -58,6 +58,23 @@ func Dial(parent context.Context, dialer websocket.Dialer, url string, logger *l
 		transport.gracefullyClose()
 	}()
 	return transport, nil
+}
+
+func (t *Transport) Log(level slog.Level, msg string, args ...any) {
+	if t.logger != nil {
+		for n := range args {
+			switch a := args[n].(type) {
+			case *error:
+				if a != nil {
+					args[n] = *a
+					// level = slog.LevelWarn
+				} else {
+					args[n] = "nil"
+				}
+			}
+		}
+		t.logger.Log(t.context, level, msg, args...)
+	}
 }
 
 func (t *Transport) Context() context.Context {
@@ -121,9 +138,7 @@ func (t *Transport) Send(request *Request) ResponseFuture {
 	t.seq++
 	t.pending[seq] = resolver
 	request.ID = seq
-	if t.logger != nil {
-		t.logger.Println("send ->", request.String())
-	}
+	t.Log(slog.LevelDebug, "send ->", "message", request.String())
 	t.mutex.Unlock()
 
 	if err := t.conn.WriteJSON(request); err != nil {
@@ -140,9 +155,7 @@ func (t *Transport) read() error {
 	if err := t.conn.ReadJSON(&response); err != nil {
 		return err
 	}
-	if t.logger != nil {
-		t.logger.Println("recv <-", response.String())
-	}
+	t.Log(slog.LevelDebug, "recv <-", "message", response.String())
 
 	if response.ID == 0 && response.Message != nil {
 		t.broker.Publish(*response.Message)

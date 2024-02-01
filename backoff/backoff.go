@@ -6,7 +6,7 @@ import (
 )
 
 var (
-	DefaultBackoffTimeout = time.Minute
+	DefaultBackoffTimeout = time.Second * 10
 	DefaultBackoffTick    = 500 * time.Millisecond
 	DefaultBackoffAttempt = 7
 )
@@ -20,14 +20,37 @@ func sleep(attempt int) {
 	time.Sleep(time.Second * time.Duration(backoff))
 }
 
+func recoverFunc(f func() error) (err any) {
+	defer func() {
+		if pnc := recover(); pnc != nil {
+			err = pnc
+		}
+	}()
+	err = f()
+	return
+}
+
+func recoverFuncValue[T any](f func() (T, error)) (value T, err any) {
+	defer func() {
+		if pnc := recover(); pnc != nil {
+			err = pnc
+		}
+	}()
+	value, err = f()
+	return
+}
+
 func Exec(fn func() error) {
-	var err error
-	var retry = 0
-	for start := time.Now(); time.Since(start) < DefaultBackoffTimeout; {
+	var (
+		err   any
+		retry = 0
+		start = time.Now()
+	)
+	for time.Since(start) < DefaultBackoffTimeout {
 		if retry > 0 {
 			time.Sleep(DefaultBackoffTick)
 		}
-		if err = fn(); err == nil {
+		if err = recoverFunc(fn); err == nil {
 			return
 		}
 		retry++
@@ -36,14 +59,17 @@ func Exec(fn func() error) {
 }
 
 func Value[T any](fn func() (T, error)) T {
-	var value T
-	var err error
-	var retry = 0
-	for start := time.Now(); time.Since(start) < DefaultBackoffTimeout; {
+	var (
+		value T
+		err   any
+		retry = 0
+		start = time.Now()
+	)
+	for time.Since(start) < DefaultBackoffTimeout {
 		if retry > 0 {
 			time.Sleep(DefaultBackoffTick)
 		}
-		if value, err = fn(); err == nil {
+		if value, err = recoverFuncValue(fn); err == nil {
 			return value
 		}
 		retry++
