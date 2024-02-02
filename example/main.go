@@ -26,15 +26,13 @@ func main() {
 	}
 
 	val := backoff.Value(func() ([]string, error) {
-		return session.Frame.QueryAll(".grid-product__title-inner").MustGet().Map(func(n control.Node) (string, error) {
-			return n.GetTextContent()
+		return session.Frame.QueryAll(".grid-product__title-inner").Value().Map(func(n *control.Node) (string, error) {
+			return n.GetTextContent().Unwrap()
 		})
 	})
 	log.Println(val)
 
 	backoff.Exec(func() error {
-		e := session.Frame.Query(`.pager__count-pages`).MustGet()
-		e.GetViewportRect()
-		return e.Click()
+		return session.Frame.Query(`.pager__count-pages`).Value().Click()
 	})
 }

@@ -11,31 +11,45 @@ import (
 	"github.com/retrozoid/control/protocol/page"
 )
 
+const documentElement = "document.documentElement"
+
 type Maybe[T any] struct {
-	Value T
-	Err   error
+	value T
+	err   error
 }
 
-func (may Maybe[T]) MustGet() T {
-	if may.Err != nil {
-		panic(may.Err)
+func (may Maybe[T]) Unwrap() (T, error) {
+	return may.value, may.err
+}
+
+func (may Maybe[T]) Err() error {
+	return may.err
+}
+
+func (may Maybe[T]) Value() T {
+	if may.err != nil {
+		panic(may.err)
 	}
-	return may.Value
+	return may.value
 }
 
-type Nodes []Node
-type MaybeNode = Maybe[Node]
-type MaybeNodes = Maybe[Nodes]
+type MaybeNode = Maybe[*Node]
+
+func queryError(err error) MaybeNode {
+	return MaybeNode{err: err}
+}
 
 type Queryable interface {
 	Query(string) MaybeNode
-	QueryAll(string) MaybeNodes
-	OwnFrame() Frame
+	QueryAll(string) MaybeNode
+	OwnFrame() *Frame
 }
 
 type Frame struct {
-	session *Session
-	id      common.FrameId
+	session     *Session
+	id          common.FrameId
+	cssSelector string
+	descendant  *Frame
 }
 
 func (f Frame) GetSession() *Session {
@@ -51,13 +65,18 @@ func (f Frame) Call(method string, send, recv any) error {
 	return f.session.Call(method, send, recv)
 }
 
-func (f Frame) OwnFrame() Frame {
+func (f *Frame) OwnFrame() *Frame {
 	return f
+}
+
+func (f Frame) Log(level slog.Level, msg string, args ...any) {
+	args = append(args, "frameId", f.id)
+	f.session.Log(level, msg, args...)
 }
 
 func (f Frame) Navigate(url string) error {
 	err := f.navigate(url)
-	f.session.Log(slog.LevelInfo, "Navigate", "url", url, "err", err)
+	f.Log(slog.LevelInfo, "Navigate", "url", url, "err", err)
 	return err
 }
 
@@ -87,7 +106,7 @@ func (f Frame) navigate(url string) error {
 
 func (f Frame) Reload(ignoreCache bool, scriptToEvaluateOnLoad string) error {
 	err := f.reload(ignoreCache, scriptToEvaluateOnLoad)
-	f.session.Log(slog.LevelInfo, "ignoreCache", ignoreCache, "scriptToEvaluateOnLoad", scriptToEvaluateOnLoad, "err", err)
+	f.Log(slog.LevelInfo, "Reload", "ignoreCache", ignoreCache, "scriptToEvaluateOnLoad", scriptToEvaluateOnLoad, "err", err)
 	return err
 }
 
@@ -109,40 +128,33 @@ func (f Frame) reload(ignoreCache bool, scriptToEvaluateOnLoad string) error {
 	return nil
 }
 
+func (f Frame) Evaluate(expression string, awaitPromise bool) Maybe[any] {
+	value, err := f.evaluate(expression, awaitPromise)
+	f.Log(slog.LevelInfo, "Evaluate", "expression", expression, "awaitPromise", awaitPromise, "value", value, "err", err)
+	return Maybe[any]{err: err, value: value}
+}
+
 func (f Frame) newNode(selector string, value any, err error) MaybeNode {
 	if err != nil {
-		return MaybeNode{Err: err}
+		return queryError(err)
 	}
 	if value == nil {
-		return MaybeNode{Err: NoSuchSelectorError(selector)}
+		return queryError(NoSuchSelectorError(selector))
 	}
-	if n, ok := value.(Node); ok {
-		if DebugOverlays && selector != "document" {
+	if n, ok := value.(*Node); ok {
+		if DebugHighlightEnabled && selector != documentElement {
 			_ = overlay.HighlightNode(f, overlay.HighlightNodeArgs{
 				HighlightConfig: &overlay.HighlightConfig{
-					ShowInfo:     false,
 					ContentColor: &dom.RGBA{R: 255, G: 0, B: 255, A: 0.2},
 				},
 				ObjectId: n.ObjectID(),
 			})
 		}
 		n.cssSelector = selector
-		return MaybeNode{Value: n}
+		return MaybeNode{value: n}
 	}
-	return MaybeNode{Err: ErrMismatchTypeDeserialization}
-}
-
-func (f Frame) newNodes(selector string, value any, err error) MaybeNodes {
-	if err != nil {
-		return MaybeNodes{Err: err}
-	}
-	if value == nil {
-		return MaybeNodes{Err: NoSuchSelectorError(selector)}
-	}
-	if n, ok := value.([]Node); ok {
-		return MaybeNodes{Value: n}
-	}
-	return MaybeNodes{Err: ErrMismatchTypeDeserialization}
+	f.Log(slog.LevelError, "can't cast remote object to Node", "value", value)
+	return queryError(errors.New("can't cast remote object to Node"))
 }
 
 func safeSelector(v string) string {
@@ -152,26 +164,24 @@ func safeSelector(v string) string {
 }
 
 func (f Frame) Document() MaybeNode {
-	value, err := f.Evaluate(`document.documentElement`, true)
-	node := f.newNode("document", value, err)
-	f.session.Log(slog.LevelInfo, "GetDocumentElement", "cssSelector", "document.documentElement", "err", node.Err)
-	return node
+	value, err := f.evaluate(documentElement, true)
+	return f.newNode(documentElement, value, err)
 }
 
 func (f Frame) Query(cssSelector string) MaybeNode {
 	doc := f.Document()
-	if doc.Err != nil {
+	if doc.Err() != nil {
 		return doc
 	}
-	return doc.MustGet().Query(cssSelector)
+	return doc.Value().Query(cssSelector)
 }
 
-func (f Frame) QueryAll(cssSelector string) MaybeNodes {
+func (f Frame) QueryAll(cssSelector string) MaybeNode {
 	doc := f.Document()
-	if doc.Err != nil {
-		return MaybeNodes{Err: doc.Err}
+	if doc.Err() != nil {
+		return doc
 	}
-	return doc.MustGet().QueryAll(cssSelector)
+	return doc.Value().QueryAll(cssSelector)
 }
 
 func (f Frame) Click(point Point) error {

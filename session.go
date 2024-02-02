@@ -20,8 +20,10 @@ import (
 )
 
 // The Longest post body size (in bytes) that would be included in requestWillBeSent notification
-var MaxPostDataSize = 20 * 1024 // 20KB
-var DebugOverlays = true
+var (
+	MaxPostDataSize       = 20 * 1024 // 20KB
+	DebugHighlightEnabled = true
+)
 
 const Blank = "about:blank"
 
@@ -52,7 +54,7 @@ type Session struct {
 	targetID  target.TargetID
 	sessionID string
 	frames    *syncFrames
-	Frame     Frame
+	Frame     *Frame
 }
 
 func (s *Session) Transport() *cdp.Transport {
@@ -120,7 +122,7 @@ func NewSession(transport *cdp.Transport, targetID target.TargetID) (*Session, e
 		timeout:   60 * time.Second,
 		frames:    &syncFrames{value: make(map[common.FrameId]string)},
 	}
-	session.Frame = Frame{
+	session.Frame = &Frame{
 		session: session,
 		id:      common.FrameId(session.targetID),
 	}
@@ -159,7 +161,7 @@ func NewSession(transport *cdp.Transport, targetID target.TargetID) (*Session, e
 	if err = network.Enable(session, network.EnableArgs{MaxPostDataSize: MaxPostDataSize}); err != nil {
 		return nil, err
 	}
-	if DebugOverlays {
+	if DebugHighlightEnabled {
 		if err = overlay.Enable(session); err != nil {
 			return nil, err
 		}
@@ -259,4 +261,43 @@ func (s *Session) CloseTarget(id target.TargetID) (err error) {
 		return nil
 	}
 	return err
+}
+
+func (s *Session) CaptureNetworkRequest(condition func(request *network.Request) bool, rejectOnLoadingFailed bool) FutureWithDeadline[network.ResponseReceived] {
+	var requestID network.RequestId
+
+	channel, cancel := s.Subscribe()
+	promise, future := cdp.MakePromise[network.ResponseReceived](cancel)
+
+	go func() {
+		for value := range channel {
+
+			switch value.Method {
+
+			case "Network.requestWillBeSent":
+				requestWillBeSent := mustUnmarshal[network.RequestWillBeSent](value)
+				if condition(requestWillBeSent.Request) {
+					requestID = requestWillBeSent.RequestId
+				}
+
+			case "Network.responseReceived":
+				responseReceived := mustUnmarshal[network.ResponseReceived](value)
+				if responseReceived.RequestId == requestID {
+					promise.Resolve(responseReceived)
+					return
+				}
+
+			case "Network.loadingFailed":
+				if rejectOnLoadingFailed {
+					loadingFailed := mustUnmarshal[network.LoadingFailed](value)
+					if loadingFailed.RequestId == requestID {
+						promise.Reject(errors.New(loadingFailed.ErrorText))
+						return
+					}
+				}
+			}
+		}
+	}()
+
+	return NewDeadlineFuture(s.context, s.timeout, future)
 }

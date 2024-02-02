@@ -58,6 +58,12 @@ func Exec(fn func() error) {
 	panic(err)
 }
 
+func MustValue[T any](fn func() T) T {
+	return Value[T](func() (T, error) {
+		return fn(), nil
+	})
+}
+
 func Value[T any](fn func() (T, error)) T {
 	var (
 		value T

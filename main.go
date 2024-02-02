@@ -36,14 +36,10 @@ func TakeWithContext(ctx context.Context, logger *slog.Logger, chromeArgs ...str
 	}
 	teardown := func() {
 		if err := transport.Close(); err != nil {
-			if logger != nil {
-				logger.Error("can't close transport", "err", err)
-			}
+			transport.Log(slog.LevelError, "can't close transport", err, err)
 		}
 		if err = browser.WaitCloseGracefully(); err != nil {
-			if logger != nil {
-				logger.Error("can't close browser gracefully", "err", err)
-			}
+			transport.Log(slog.LevelError, "can't close browser gracefully", err, err)
 		}
 	}
 	return session, teardown, nil
@@ -53,6 +49,14 @@ func TakeWithContext(ctx context.Context, logger *slog.Logger, chromeArgs ...str
 type FutureWithDeadline[T any] interface {
 	Get() (T, error)
 	Cancel()
+}
+
+func NewDeadlineFuture[T any](ctx context.Context, deadline time.Duration, future cdp.Future[T]) FutureWithDeadline[T] {
+	return deadlineFuture[T]{
+		context:  ctx,
+		deadline: deadline,
+		future:   future,
+	}
 }
 
 type deadlineFuture[T any] struct {
@@ -90,9 +94,6 @@ func MakeFuture[T any](s *Session, method string, filter func(T) bool) FutureWit
 			}
 		}
 	}()
-	return deadlineFuture[T]{
-		context:  s.context,
-		deadline: s.timeout,
-		future:   future,
-	}
+
+	return NewDeadlineFuture(s.context, s.timeout, future)
 }
