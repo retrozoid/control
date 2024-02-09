@@ -67,7 +67,6 @@ func (t *Transport) Log(level slog.Level, msg string, args ...any) {
 			case *error:
 				if a != nil {
 					args[n] = *a
-					// level = slog.LevelWarn
 				} else {
 					args[n] = "nil"
 				}

@@ -109,12 +109,6 @@ func (s *Session) Subscribe() (channel chan cdp.Message, cancel func()) {
 	return s.transport.Subscribe(s.sessionID)
 }
 
-func (s *Session) Close() error {
-	return target.CloseTarget(s, target.CloseTargetArgs{
-		TargetId: s.targetID,
-	})
-}
-
 func NewSession(transport *cdp.Transport, targetID target.TargetID) (*Session, error) {
 	var session = &Session{
 		transport: transport,
@@ -252,6 +246,14 @@ func (s *Session) ActivateTarget(id target.TargetID) error {
 	return target.ActivateTarget(s, target.ActivateTargetArgs{
 		TargetId: id,
 	})
+}
+
+func (s *Session) Activate() error {
+	return s.ActivateTarget(s.targetID)
+}
+
+func (s *Session) Close() error {
+	return s.CloseTarget(s.targetID)
 }
 
 func (s *Session) CloseTarget(id target.TargetID) (err error) {

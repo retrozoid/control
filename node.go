@@ -7,6 +7,7 @@ import (
 	"math"
 
 	"github.com/retrozoid/control/protocol/dom"
+	"github.com/retrozoid/control/protocol/page"
 	"github.com/retrozoid/control/protocol/runtime"
 )
 
@@ -107,6 +108,17 @@ func (e Node) log(msg string, args ...any) {
 	e.frame.Log(slog.LevelInfo, msg, args...)
 }
 
+func (e Node) HasClass(class string) Maybe[bool] {
+	value, err := e.eval(`function(c){return this.classList.contains(c)}`)
+	return castValue[bool](value, err)
+}
+
+func (e Node) CallFunctionOn(function string, args ...any) Maybe[any] {
+	value, err := e.eval(function, args...)
+	e.log("CallFunctionOn", "function", function, "args", args, "value", value, "err", err)
+	return castValue[any](value, err)
+}
+
 func (e Node) Query(cssSelector string) MaybeNode {
 	cssSelector = safeSelector(cssSelector)
 	var (
@@ -153,11 +165,8 @@ func (e Node) ScrollIntoView() error {
 
 func (e Node) GetTextContent() Maybe[string] {
 	value, err := e.eval(`function(){return this.textContent.trim()}`)
-	if err != nil {
-		return Maybe[string]{err: err}
-	}
 	e.log("GetTextContent", "content", value, "err", err)
-	return Maybe[string]{value: value.(string)}
+	return castValue[string](value, err)
 }
 
 func (e Node) Focus() error {
@@ -191,7 +200,6 @@ func (e Node) insertText(value string) (err error) {
 		return err
 	}
 	return nil
-	// return e.Blur() // to fire change event
 }
 
 func (e Node) SetValue(value string) (err error) {
@@ -225,8 +233,8 @@ func (e Node) Visible() bool {
 	return value.(bool)
 }
 
-func (e Node) Upload(files ...string) (err error) {
-	err = dom.SetFileInputFiles(e, dom.SetFileInputFilesArgs{
+func (e Node) Upload(files ...string) error {
+	err := dom.SetFileInputFiles(e, dom.SetFileInputFilesArgs{
 		ObjectId: e.ObjectID(),
 		Files:    files,
 	})
@@ -303,27 +311,26 @@ func (e Node) ClickablePoint() Maybe[Point] {
 	return Maybe[Point]{value: r.Middle()}
 }
 
-// Deprecated
-// func (e Node) GetViewportRect() (dom.Rect, error) {
-// 	var r = dom.Rect{}
-// 	value, err := e.eval(`function() {
-// 		const e = this.getBoundingClientRect(), t = this.ownerDocument.documentElement.getBoundingClientRect();
-// 		return [e.left - t.left, e.top - t.top, e.width, e.height];
-// 	}`)
-// 	if err != nil {
-// 		return r, err
-// 	}
-// 	if tuple, ok := value.([]any); ok {
-// 		r = dom.Rect{
-// 			X:      tuple[0].(float64),
-// 			Y:      tuple[1].(float64),
-// 			Width:  tuple[2].(float64),
-// 			Height: tuple[3].(float64),
-// 		}
-// 		return r, nil
-// 	}
-// 	return r, ErrMismatchTypeDeserialization
-// }
+func (e Node) Clip() Maybe[page.Viewport] {
+	value, err := e.eval(`function() {
+		const e = this.getBoundingClientRect(), t = this.ownerDocument.documentElement.getBoundingClientRect();
+		return [e.left - t.left, e.top - t.top, e.width, e.height];
+	}`)
+	if err != nil {
+		return Maybe[page.Viewport]{err: err}
+	}
+	if arr, ok := value.([]any); ok {
+		return Maybe[page.Viewport]{
+			value: page.Viewport{
+				X:      arr[0].(float64),
+				Y:      arr[1].(float64),
+				Width:  arr[2].(float64),
+				Height: arr[3].(float64),
+			},
+		}
+	}
+	return Maybe[page.Viewport]{err: errors.New("clip: eval result is not array")}
+}
 
 func (e Node) getContentQuad() (Quad, error) {
 	val, err := dom.GetContentQuads(e, dom.GetContentQuadsArgs{
@@ -361,10 +368,7 @@ func (e Node) GetComputedStyle(style string, pseudo string) Maybe[string] {
 	}
 	value, err := e.eval(`function(p,s){return getComputedStyle(this, p)[s]}`, pseudoVar, style)
 	e.log("GetComputedStyle", "style", style, "pseudo", pseudo, "value", value, "err", err)
-	if err != nil {
-		return Maybe[string]{err: err}
-	}
-	return Maybe[string]{value: value.(string)}
+	return castValue[string](value, err)
 }
 
 func (e Node) SetAttribute(attr, value string) error {
@@ -376,10 +380,7 @@ func (e Node) SetAttribute(attr, value string) error {
 func (e Node) GetAttribute(attr string) Maybe[string] {
 	value, err := e.eval(`function(a){return this.getAttribute(a)}`, attr)
 	e.log("GetAttribute", "attr", attr, "value", value, "err", err)
-	if err != nil {
-		return Maybe[string]{err: err}
-	}
-	return Maybe[string]{value: value.(string)}
+	return castValue[string](value, err)
 }
 
 func (e Node) GetRectangle() Maybe[dom.Rect] {
@@ -438,10 +439,7 @@ func (e Node) SetCheckbox(check bool) error {
 func (e Node) IsChecked() Maybe[bool] {
 	value, err := e.eval(`function(){return this.checked}`)
 	e.log("IsChecked", "value", value, "err", err)
-	if err != nil {
-		return Maybe[bool]{err: err}
-	}
-	return Maybe[bool]{value: value.(bool)}
+	return castValue[bool](value, err)
 }
 
 func (node *Node) Map(mapFn func(*Node) (string, error)) ([]string, error) {
@@ -456,15 +454,24 @@ func (node *Node) Map(mapFn func(*Node) (string, error)) ([]string, error) {
 	return r, nil
 }
 
+func (node *Node) Foreach(predicate func(*Node) error) error {
+	for p := node; p != nil; p = p.NextSibling() {
+		if err := predicate(p); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (node *Node) First(predicate func(*Node) (bool, error)) MaybeNode {
 	for p := node; p != nil; p = p.NextSibling() {
 		val, err := predicate(p)
 		if err != nil {
-			return queryError(err)
+			return MaybeNode{err: err}
 		}
 		if val {
 			return MaybeNode{value: p}
 		}
 	}
-	return queryError(errors.New("no predicate match"))
+	return MaybeNode{err: errors.New("no predicate match")}
 }

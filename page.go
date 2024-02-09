@@ -2,7 +2,9 @@ package control
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
+	"reflect"
 	"strings"
 
 	"github.com/retrozoid/control/protocol/common"
@@ -16,6 +18,18 @@ const documentElement = "document.documentElement"
 type Maybe[T any] struct {
 	value T
 	err   error
+}
+
+func castValue[T any](value any, err error) Maybe[T] {
+	if err != nil {
+		return Maybe[T]{err: err}
+	}
+	var t T
+	var ok bool
+	if t, ok = value.(T); ok {
+		return Maybe[T]{value: t}
+	}
+	return Maybe[T]{err: fmt.Errorf("can't cast %s to %s", reflect.TypeOf(value), reflect.TypeOf(t))}
 }
 
 func (may Maybe[T]) Unwrap() (T, error) {
@@ -33,11 +47,13 @@ func (may Maybe[T]) Value() T {
 	return may.value
 }
 
-type MaybeNode = Maybe[*Node]
-
-func queryError(err error) MaybeNode {
-	return MaybeNode{err: err}
+func (may Maybe[T]) IfPresent(f func(T)) {
+	if may.err == nil {
+		f(may.value)
+	}
 }
+
+type MaybeNode = Maybe[*Node]
 
 type Queryable interface {
 	Query(string) MaybeNode
@@ -130,16 +146,16 @@ func (f Frame) reload(ignoreCache bool, scriptToEvaluateOnLoad string) error {
 
 func (f Frame) Evaluate(expression string, awaitPromise bool) Maybe[any] {
 	value, err := f.evaluate(expression, awaitPromise)
-	f.Log(slog.LevelInfo, "Evaluate", "expression", expression, "awaitPromise", awaitPromise, "value", value, "err", err)
-	return Maybe[any]{err: err, value: value}
+	f.Log(slog.LevelInfo, "Evaluate", "expression", expression, "awaitPromise", awaitPromise, "err", err)
+	return Maybe[any]{value: value, err: err}
 }
 
 func (f Frame) newNode(selector string, value any, err error) MaybeNode {
 	if err != nil {
-		return queryError(err)
+		return MaybeNode{err: err}
 	}
 	if value == nil {
-		return queryError(NoSuchSelectorError(selector))
+		return MaybeNode{err: NoSuchSelectorError(selector)}
 	}
 	if n, ok := value.(*Node); ok {
 		if DebugHighlightEnabled && selector != documentElement {
@@ -154,7 +170,7 @@ func (f Frame) newNode(selector string, value any, err error) MaybeNode {
 		return MaybeNode{value: n}
 	}
 	f.Log(slog.LevelError, "can't cast remote object to Node", "value", value)
-	return queryError(errors.New("can't cast remote object to Node"))
+	return MaybeNode{err: errors.New("can't cast remote object to Node")}
 }
 
 func safeSelector(v string) string {
@@ -203,10 +219,26 @@ func (f Frame) GetNavigationEntry() (*page.NavigationEntry, error) {
 	return val.Entries[val.CurrentIndex], nil
 }
 
-func (f Frame) GetLayoutMetrics() (*page.GetLayoutMetricsVal, error) {
-	view, err := page.GetLayoutMetrics(f)
+func (f Frame) GetCurrentURL() Maybe[string] {
+	e, err := f.GetNavigationEntry()
 	if err != nil {
-		return nil, err
+		f.Log(slog.LevelInfo, "GetCurrentURL", "err", err)
+		return Maybe[string]{err: err}
 	}
-	return view, nil
+	f.Log(slog.LevelInfo, "GetCurrentURL", "value", e.Url, "err", err)
+	return Maybe[string]{value: e.Url}
+}
+
+func (f Frame) NavigateHistory(delta int) error {
+	val, err := page.GetNavigationHistory(f)
+	if err != nil {
+		return err
+	}
+	move := val.CurrentIndex + delta
+	if move >= 0 && move < len(val.Entries) {
+		return page.NavigateToHistoryEntry(f, page.NavigateToHistoryEntryArgs{
+			EntryId: val.Entries[move].Id,
+		})
+	}
+	return nil
 }
