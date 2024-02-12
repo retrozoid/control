@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/retrozoid/control/protocol/common"
 	"github.com/retrozoid/control/protocol/dom"
@@ -158,6 +159,7 @@ func (f Frame) newNode(selector string, value any, err error) MaybeNode {
 		return MaybeNode{err: NoSuchSelectorError(selector)}
 	}
 	if n, ok := value.(*Node); ok {
+
 		if DebugHighlightEnabled && selector != documentElement {
 			_ = overlay.HighlightNode(f, overlay.HighlightNodeArgs{
 				HighlightConfig: &overlay.HighlightConfig{
@@ -201,11 +203,19 @@ func (f Frame) QueryAll(cssSelector string) MaybeNode {
 }
 
 func (f Frame) Click(point Point) error {
-	return NewMouse(f).Click(MouseLeft, point)
+	return NewMouse(f).Click(MouseLeft, point, time.Millisecond*42)
 }
 
 func (f Frame) Hover(point Point) error {
 	return NewMouse(f).Move(MouseNone, point)
+}
+
+func (f Frame) GetLayout() Maybe[page.GetLayoutMetricsVal] {
+	view, err := page.GetLayoutMetrics(f)
+	if err != nil {
+		return Maybe[page.GetLayoutMetricsVal]{err: err}
+	}
+	return Maybe[page.GetLayoutMetricsVal]{value: *view}
 }
 
 func (f Frame) GetNavigationEntry() (*page.NavigationEntry, error) {

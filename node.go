@@ -3,6 +3,7 @@ package control
 import (
 	"errors"
 	"fmt"
+	"log"
 	"log/slog"
 	"math"
 
@@ -13,12 +14,16 @@ import (
 
 type NoSuchSelectorError string
 
+var ErrElementNotClickable = errors.New("node is not clickable")
+var ErrNoPredicateMatch = errors.New("no predicate match")
+
 func (s NoSuchSelectorError) Error() string {
 	return fmt.Sprintf("no such selector found: `%s`", string(s))
 }
 
 type Node struct {
 	JsObject
+	self        *dom.Node
 	cssSelector string
 	frame       *Frame
 	sibling     *Node
@@ -169,6 +174,12 @@ func (e Node) GetTextContent() Maybe[string] {
 	return castValue[string](value, err)
 }
 
+func (e Node) GetValue() Maybe[string] {
+	value, err := e.eval(`function(){switch(this.tagName){case"INPUT":case"TEXTAREA":return this.value;case"SELECT":return Array.from(this.selectedOptions).map(b=>b.innerText).join();default:return this.innerText||this.textContent.trim();}}`)
+	e.log("GetTextContent", "content", value, "err", err)
+	return castValue[string](value, err)
+}
+
 func (e Node) Focus() error {
 	err := dom.Focus(e, dom.FocusArgs{
 		ObjectId: e.ObjectID(),
@@ -213,7 +224,7 @@ func (e Node) SetValue(value string) (err error) {
 
 func (e Node) ClearValue() (err error) {
 	defer e.log("ClearValue", "err", &err)
-	_, err = e.eval(`function(){this.value=''}`)
+	_, err = e.eval(`function(){('INPUT'===this.nodeName||'TEXTAREA'===this.nodeName)?this.value='':this.innerText=''}`)
 	if err != nil {
 		return err
 	}
@@ -224,9 +235,9 @@ func (e Node) ClearValue() (err error) {
 	return err
 }
 
-func (e Node) Visible() bool {
+func (e Node) Visibility() bool {
 	value, err := e.eval(`function(){return this.checkVisibility()}`)
-	e.log("Visible", "is_visible", value, "err", err)
+	e.log("Visibility", "value", value, "err", err)
 	if err != nil {
 		return false
 	}
@@ -261,7 +272,7 @@ func (e Node) click() (err error) {
 	if err != nil {
 		return err
 	}
-	// layout, err := e.frame.GetLayoutMetrics()
+	// layout, err := e.frame.GetLayout().Unwrap()
 	// if err != nil {
 	// 	return err
 	// }
@@ -275,7 +286,7 @@ func (e Node) click() (err error) {
 	// 	return err
 	// }
 	// if nodeForLocation.FrameId != e.frame.id {
-	// 	return ErrClickOverlayFrame
+	// 	return ErrElementNotClickable
 	// }
 	// self, err := dom.DescribeNode(e, dom.DescribeNodeArgs{
 	// 	ObjectId: e.ObjectID(),
@@ -284,13 +295,13 @@ func (e Node) click() (err error) {
 	// 	return err
 	// }
 	// if nodeForLocation.BackendNodeId != self.Node.BackendNodeId {
-	// 	overlay, err := dom.DescribeNode(e, dom.DescribeNodeArgs{
-	// 		BackendNodeId: nodeForLocation.BackendNodeId,
-	// 	})
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// 	return OverlapError{Node: overlay.Node}
+	// 	// overlay, err := dom.DescribeNode(e, dom.DescribeNodeArgs{
+	// 	// 	BackendNodeId: nodeForLocation.BackendNodeId,
+	// 	// })
+	// 	// if err != nil {
+	// 	// 	return err
+	// 	// }
+	// 	return ErrElementNotClickable
 	// }
 	promise, err := e.addEventListener("click")
 	if err != nil {
@@ -299,7 +310,8 @@ func (e Node) click() (err error) {
 	if err = e.frame.Click(point); err != nil {
 		return err
 	}
-	_, err = e.frame.AwaitPromise(promise)
+	a, err := e.frame.AwaitPromise(promise)
+	log.Println(a)
 	return err
 }
 
@@ -473,5 +485,5 @@ func (node *Node) First(predicate func(*Node) (bool, error)) MaybeNode {
 			return MaybeNode{value: p}
 		}
 	}
-	return MaybeNode{err: errors.New("no predicate match")}
+	return MaybeNode{err: ErrNoPredicateMatch}
 }

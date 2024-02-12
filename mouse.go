@@ -2,6 +2,7 @@ package control
 
 import (
 	"sync"
+	"time"
 
 	"github.com/retrozoid/control/protocol"
 	"github.com/retrozoid/control/protocol/input"
@@ -58,7 +59,7 @@ func (m Mouse) Release(button input.MouseButton, point Point) error {
 	})
 }
 
-func (m Mouse) Click(button input.MouseButton, point Point) (err error) {
+func (m Mouse) Click(button input.MouseButton, point Point, delay time.Duration) (err error) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	if err = m.Move(MouseNone, point); err != nil {
@@ -67,6 +68,7 @@ func (m Mouse) Click(button input.MouseButton, point Point) (err error) {
 	if err = m.Press(button, point); err != nil {
 		return err
 	}
+	time.Sleep(delay)
 	if err = m.Release(button, point); err != nil {
 		return err
 	}

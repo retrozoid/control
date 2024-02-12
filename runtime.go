@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/retrozoid/control/protocol/dom"
 	"github.com/retrozoid/control/protocol/runtime"
 )
 
@@ -121,7 +122,7 @@ func (f *Frame) unserialize(value *runtime.RemoteObject) (any, error) {
 
 	case "object":
 		//  [[x map[type:number value:543.8359375]] [y map[type:number value:5211.6328125]] [width map[type:number value:112.3203125]] [height map[type:number value:22.3984375]]]
-		return value.DeepSerializedValue.Value.(map[string]any), nil
+		return value.DeepSerializedValue.Value.(any), nil
 
 	default:
 		return value.Value, nil
@@ -169,8 +170,8 @@ func (f Frame) evaluate(expression string, awaitPromise bool) (any, error) {
 func (f Frame) AwaitPromise(promise JsObject) (any, error) {
 	value, err := runtime.AwaitPromise(f, runtime.AwaitPromiseArgs{
 		PromiseObjectId: promise.ObjectID(),
-		ReturnByValue:   false,
-		GeneratePreview: true,
+		ReturnByValue:   true,
+		GeneratePreview: false,
 	})
 	if err != nil {
 		return nil, err
@@ -215,6 +216,16 @@ func (f Frame) getProperties(self JsObject, ownProperties, accessorPropertiesOnl
 		return nil, err
 	}
 	return value, nil
+}
+
+func (f Frame) describeNode(self JsObject) (*dom.Node, error) {
+	value, err := dom.DescribeNode(f, dom.DescribeNodeArgs{
+		ObjectId: self.ObjectID(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return value.Node, nil
 }
 
 func toDOMException(value *runtime.ExceptionDetails) error {

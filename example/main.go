@@ -12,7 +12,7 @@ import (
 
 func main() {
 	// slogger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-	// 	Level: slog.LevelInfo,
+	// 	Level: slog.LevelDebug,
 	// }))
 	session, dfr, err := control.TakeWithContext(context.TODO(), slog.Default(), "--no-startup-window")
 	if err != nil {
