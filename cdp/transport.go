@@ -62,16 +62,6 @@ func Dial(parent context.Context, dialer websocket.Dialer, url string, logger *s
 
 func (t *Transport) Log(level slog.Level, msg string, args ...any) {
 	if t.logger != nil {
-		for n := range args {
-			switch a := args[n].(type) {
-			case *error:
-				if a != nil {
-					args[n] = *a
-				} else {
-					args[n] = "nil"
-				}
-			}
-		}
 		t.logger.Log(t.context, level, msg, args...)
 	}
 }

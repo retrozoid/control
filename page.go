@@ -14,51 +14,55 @@ import (
 	"github.com/retrozoid/control/protocol/page"
 )
 
-const documentElement = "document.documentElement"
+const (
+	documentElement       = "document.documentElement"
+	truncateLongStringLen = 1024
+)
 
-type Maybe[T any] struct {
+type Optional[T any] struct {
 	value T
 	err   error
 }
 
-func castValue[T any](value any, err error) Maybe[T] {
+func castValue[T any](value any, err error) Optional[T] {
 	if err != nil {
-		return Maybe[T]{err: err}
+		return Optional[T]{err: err}
 	}
 	var t T
+	if value == nil {
+		return Optional[T]{value: t}
+	}
 	var ok bool
 	if t, ok = value.(T); ok {
-		return Maybe[T]{value: t}
+		return Optional[T]{value: t}
 	}
-	return Maybe[T]{err: fmt.Errorf("can't cast %s to %s", reflect.TypeOf(value), reflect.TypeOf(t))}
+	return Optional[T]{err: fmt.Errorf("can't cast %s to %s", reflect.TypeOf(value), reflect.TypeOf(t))}
 }
 
-func (may Maybe[T]) Unwrap() (T, error) {
+func (may Optional[T]) Unwrap() (T, error) {
 	return may.value, may.err
 }
 
-func (may Maybe[T]) Err() error {
+func (may Optional[T]) Err() error {
 	return may.err
 }
 
-func (may Maybe[T]) Value() T {
+func (may Optional[T]) Value() T {
 	if may.err != nil {
 		panic(may.err)
 	}
 	return may.value
 }
 
-func (may Maybe[T]) IfPresent(f func(T)) {
+func (may Optional[T]) IfPresent(f func(T)) {
 	if may.err == nil {
 		f(may.value)
 	}
 }
 
-type MaybeNode = Maybe[*Node]
-
 type Queryable interface {
-	Query(string) MaybeNode
-	QueryAll(string) MaybeNode
+	Query(string) Optional[*Node]
+	QueryAll(string) Optional[*Node]
 	OwnFrame() *Frame
 }
 
@@ -145,21 +149,32 @@ func (f Frame) reload(ignoreCache bool, scriptToEvaluateOnLoad string) error {
 	return nil
 }
 
-func (f Frame) Evaluate(expression string, awaitPromise bool) Maybe[any] {
-	value, err := f.evaluate(expression, awaitPromise)
-	f.Log(slog.LevelInfo, "Evaluate", "expression", expression, "awaitPromise", awaitPromise, "err", err)
-	return Maybe[any]{value: value, err: err}
+func truncate(value string, length int) string {
+	if len(value) > length {
+		var b = strings.Builder{}
+		b.WriteString(value[:length])
+		b.WriteString(" (truncated ")
+		b.WriteString(fmt.Sprint(len(value[length:])))
+		b.WriteString(")")
+		return b.String()
+	}
+	return value
 }
 
-func (f Frame) newNode(selector string, value any, err error) MaybeNode {
+func (f Frame) Evaluate(expression string, awaitPromise bool) Optional[any] {
+	value, err := f.evaluate(expression, awaitPromise)
+	f.Log(slog.LevelInfo, "Evaluate", "expression", truncate(expression, truncateLongStringLen), "awaitPromise", awaitPromise, "value", truncate(fmt.Sprint(value), truncateLongStringLen), "err", err)
+	return Optional[any]{value: value, err: err}
+}
+
+func (f Frame) newNode(selector string, value any, err error) Optional[*Node] {
 	if err != nil {
-		return MaybeNode{err: err}
+		return Optional[*Node]{err: err}
 	}
 	if value == nil {
-		return MaybeNode{err: NoSuchSelectorError(selector)}
+		return Optional[*Node]{err: NoSuchSelectorError(selector)}
 	}
 	if n, ok := value.(*Node); ok {
-
 		if DebugHighlightEnabled && selector != documentElement {
 			_ = overlay.HighlightNode(f, overlay.HighlightNodeArgs{
 				HighlightConfig: &overlay.HighlightConfig{
@@ -169,10 +184,10 @@ func (f Frame) newNode(selector string, value any, err error) MaybeNode {
 			})
 		}
 		n.cssSelector = selector
-		return MaybeNode{value: n}
+		return Optional[*Node]{value: n}
 	}
 	f.Log(slog.LevelError, "can't cast remote object to Node", "value", value)
-	return MaybeNode{err: errors.New("can't cast remote object to Node")}
+	return Optional[*Node]{err: errors.New("can't cast remote object to Node")}
 }
 
 func safeSelector(v string) string {
@@ -181,12 +196,12 @@ func safeSelector(v string) string {
 	return v
 }
 
-func (f Frame) Document() MaybeNode {
+func (f Frame) Document() Optional[*Node] {
 	value, err := f.evaluate(documentElement, true)
 	return f.newNode(documentElement, value, err)
 }
 
-func (f Frame) Query(cssSelector string) MaybeNode {
+func (f Frame) Query(cssSelector string) Optional[*Node] {
 	doc := f.Document()
 	if doc.Err() != nil {
 		return doc
@@ -194,7 +209,7 @@ func (f Frame) Query(cssSelector string) MaybeNode {
 	return doc.Value().Query(cssSelector)
 }
 
-func (f Frame) QueryAll(cssSelector string) MaybeNode {
+func (f Frame) QueryAll(cssSelector string) Optional[*Node] {
 	doc := f.Document()
 	if doc.Err() != nil {
 		return doc
@@ -210,33 +225,33 @@ func (f Frame) Hover(point Point) error {
 	return NewMouse(f).Move(MouseNone, point)
 }
 
-func (f Frame) GetLayout() Maybe[page.GetLayoutMetricsVal] {
+func (f Frame) GetLayout() Optional[page.GetLayoutMetricsVal] {
 	view, err := page.GetLayoutMetrics(f)
 	if err != nil {
-		return Maybe[page.GetLayoutMetricsVal]{err: err}
+		return Optional[page.GetLayoutMetricsVal]{err: err}
 	}
-	return Maybe[page.GetLayoutMetricsVal]{value: *view}
+	return Optional[page.GetLayoutMetricsVal]{value: *view}
 }
 
-func (f Frame) GetNavigationEntry() (*page.NavigationEntry, error) {
+func (f Frame) GetNavigationEntry() Optional[page.NavigationEntry] {
 	val, err := page.GetNavigationHistory(f)
 	if err != nil {
-		return nil, err
+		return Optional[page.NavigationEntry]{err: err}
 	}
 	if val.CurrentIndex == -1 {
-		return &page.NavigationEntry{Url: Blank}, nil
+		return Optional[page.NavigationEntry]{value: page.NavigationEntry{Url: Blank}}
 	}
-	return val.Entries[val.CurrentIndex], nil
+	return Optional[page.NavigationEntry]{value: *val.Entries[val.CurrentIndex]}
 }
 
-func (f Frame) GetCurrentURL() Maybe[string] {
-	e, err := f.GetNavigationEntry()
+func (f Frame) GetCurrentURL() Optional[string] {
+	e, err := f.GetNavigationEntry().Unwrap()
 	if err != nil {
 		f.Log(slog.LevelInfo, "GetCurrentURL", "err", err)
-		return Maybe[string]{err: err}
+		return Optional[string]{err: err}
 	}
 	f.Log(slog.LevelInfo, "GetCurrentURL", "value", e.Url, "err", err)
-	return Maybe[string]{value: e.Url}
+	return Optional[string]{value: e.Url}
 }
 
 func (f Frame) NavigateHistory(delta int) error {

@@ -3,7 +3,6 @@ package control
 import (
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"math"
 
@@ -113,18 +112,18 @@ func (e Node) log(msg string, args ...any) {
 	e.frame.Log(slog.LevelInfo, msg, args...)
 }
 
-func (e Node) HasClass(class string) Maybe[bool] {
+func (e Node) HasClass(class string) Optional[bool] {
 	value, err := e.eval(`function(c){return this.classList.contains(c)}`)
 	return castValue[bool](value, err)
 }
 
-func (e Node) CallFunctionOn(function string, args ...any) Maybe[any] {
+func (e Node) CallFunctionOn(function string, args ...any) Optional[any] {
 	value, err := e.eval(function, args...)
 	e.log("CallFunctionOn", "function", function, "args", args, "value", value, "err", err)
 	return castValue[any](value, err)
 }
 
-func (e Node) Query(cssSelector string) MaybeNode {
+func (e Node) Query(cssSelector string) Optional[*Node] {
 	cssSelector = safeSelector(cssSelector)
 	var (
 		value, err = e.eval(`function(s){return this.querySelector(s)}`, cssSelector)
@@ -134,7 +133,7 @@ func (e Node) Query(cssSelector string) MaybeNode {
 	return node
 }
 
-func (e Node) QueryAll(cssSelector string) MaybeNode {
+func (e Node) QueryAll(cssSelector string) Optional[*Node] {
 	cssSelector = safeSelector(cssSelector)
 	var (
 		value, err = e.eval(`function(s){return this.querySelectorAll(s)}`, cssSelector)
@@ -144,13 +143,13 @@ func (e Node) QueryAll(cssSelector string) MaybeNode {
 	return node
 }
 
-func (e Node) ToFrame() Maybe[*Frame] {
+func (e Node) ToFrame() Optional[*Frame] {
 	value, err := dom.DescribeNode(e, dom.DescribeNodeArgs{
 		ObjectId: e.ObjectID(),
 	})
 	if err != nil {
 		e.log("ToFrame", "err", err)
-		return Maybe[*Frame]{err: err}
+		return Optional[*Frame]{err: err}
 	}
 	e.log("ToFrame", "value", value.Node.FrameId, "err", err)
 	frame := &Frame{
@@ -159,7 +158,7 @@ func (e Node) ToFrame() Maybe[*Frame] {
 		cssSelector: e.cssSelector,
 	}
 	e.frame.descendant = frame
-	return Maybe[*Frame]{value: frame}
+	return Optional[*Frame]{value: frame}
 }
 
 func (e Node) ScrollIntoView() error {
@@ -168,13 +167,13 @@ func (e Node) ScrollIntoView() error {
 	})
 }
 
-func (e Node) GetTextContent() Maybe[string] {
+func (e Node) GetTextContent() Optional[string] {
 	value, err := e.eval(`function(){return this.textContent.trim()}`)
 	e.log("GetTextContent", "content", value, "err", err)
 	return castValue[string](value, err)
 }
 
-func (e Node) GetValue() Maybe[string] {
+func (e Node) GetValue() Optional[string] {
 	value, err := e.eval(`function(){switch(this.tagName){case"INPUT":case"TEXTAREA":return this.value;case"SELECT":return Array.from(this.selectedOptions).map(b=>b.innerText).join();default:return this.innerText||this.textContent.trim();}}`)
 	e.log("GetTextContent", "content", value, "err", err)
 	return castValue[string](value, err)
@@ -214,7 +213,9 @@ func (e Node) insertText(value string) (err error) {
 }
 
 func (e Node) SetValue(value string) (err error) {
-	defer e.log("SetValue", "value", value, "err", &err)
+	defer func() {
+		e.log("SetValue", "value", value, "err", err)
+	}()
 	if err = e.ClearValue(); err != nil {
 		return err
 	}
@@ -223,7 +224,9 @@ func (e Node) SetValue(value string) (err error) {
 }
 
 func (e Node) ClearValue() (err error) {
-	defer e.log("ClearValue", "err", &err)
+	defer func() {
+		e.log("ClearValue", "err", err)
+	}()
 	_, err = e.eval(`function(){('INPUT'===this.nodeName||'TEXTAREA'===this.nodeName)?this.value='':this.innerText=''}`)
 	if err != nil {
 		return err
@@ -310,29 +313,32 @@ func (e Node) click() (err error) {
 	if err = e.frame.Click(point); err != nil {
 		return err
 	}
-	a, err := e.frame.AwaitPromise(promise)
-	log.Println(a)
+	_, err = e.frame.AwaitPromise(promise)
+	if err != nil && err.Error() == `Cannot find context with specified id` {
+		// click can cause navigate with context lost
+		return nil
+	}
 	return err
 }
 
-func (e Node) ClickablePoint() Maybe[Point] {
-	r, err := e.getContentQuad()
+func (e Node) ClickablePoint() Optional[Point] {
+	r, err := e.getContentQuad(true)
 	if err != nil {
-		return Maybe[Point]{err: err}
+		return Optional[Point]{err: err}
 	}
-	return Maybe[Point]{value: r.Middle()}
+	return Optional[Point]{value: r.Middle()}
 }
 
-func (e Node) Clip() Maybe[page.Viewport] {
+func (e Node) Clip() Optional[page.Viewport] {
 	value, err := e.eval(`function() {
 		const e = this.getBoundingClientRect(), t = this.ownerDocument.documentElement.getBoundingClientRect();
 		return [e.left - t.left, e.top - t.top, e.width, e.height];
 	}`)
 	if err != nil {
-		return Maybe[page.Viewport]{err: err}
+		return Optional[page.Viewport]{err: err}
 	}
 	if arr, ok := value.([]any); ok {
-		return Maybe[page.Viewport]{
+		return Optional[page.Viewport]{
 			value: page.Viewport{
 				X:      arr[0].(float64),
 				Y:      arr[1].(float64),
@@ -341,10 +347,10 @@ func (e Node) Clip() Maybe[page.Viewport] {
 			},
 		}
 	}
-	return Maybe[page.Viewport]{err: errors.New("clip: eval result is not array")}
+	return Optional[page.Viewport]{err: errors.New("clip: eval result is not array")}
 }
 
-func (e Node) getContentQuad() (Quad, error) {
+func (e Node) getContentQuad(viewportCorrection bool) (Quad, error) {
 	val, err := dom.GetContentQuads(e, dom.GetContentQuadsArgs{
 		ObjectId: e.ObjectID(),
 	})
@@ -355,7 +361,25 @@ func (e Node) getContentQuad() (Quad, error) {
 	if len(quads) == 0 { // should be at least one
 		return nil, errors.New("node has no visible bounds")
 	}
+	layout, err := e.frame.GetLayout().Unwrap()
+	if err != nil {
+		return nil, err
+	}
 	for _, quad := range quads {
+		/* correction is get sub-quad of element that in viewport
+		 _______________  <- Viewport top
+		|  1 _______ 2  |
+		|   |visible|   | visible part of element
+		|__4|visible|3__| <- Viewport bottom
+		|   |invisib|   | this invisible part of element omits if viewportCorrection
+		|...............|
+		*/
+		if viewportCorrection {
+			for i := 0; i < len(quad); i++ {
+				quad[i].X = math.Min(math.Max(quad[i].X, 0), float64(layout.CssLayoutViewport.ClientWidth))
+				quad[i].Y = math.Min(math.Max(quad[i].Y, 0), float64(layout.CssLayoutViewport.ClientHeight))
+			}
+		}
 		if quad.Area() > 1 {
 			return quad, nil
 		}
@@ -365,7 +389,9 @@ func (e Node) getContentQuad() (Quad, error) {
 
 func (e Node) Hover() (err error) {
 	p, err := e.ClickablePoint().Unwrap()
-	defer e.log("Hover", "err", &err)
+	defer func() {
+		e.log("Hover", "err", err)
+	}()
 	if err != nil {
 		return err
 	}
@@ -373,7 +399,7 @@ func (e Node) Hover() (err error) {
 	return err
 }
 
-func (e Node) GetComputedStyle(style string, pseudo string) Maybe[string] {
+func (e Node) GetComputedStyle(style string, pseudo string) Optional[string] {
 	var pseudoVar any = nil
 	if pseudo != "" {
 		pseudoVar = pseudo
@@ -389,17 +415,17 @@ func (e Node) SetAttribute(attr, value string) error {
 	return err
 }
 
-func (e Node) GetAttribute(attr string) Maybe[string] {
+func (e Node) GetAttribute(attr string) Optional[string] {
 	value, err := e.eval(`function(a){return this.getAttribute(a)}`, attr)
 	e.log("GetAttribute", "attr", attr, "value", value, "err", err)
 	return castValue[string](value, err)
 }
 
-func (e Node) GetRectangle() Maybe[dom.Rect] {
-	q, err := e.getContentQuad()
+func (e Node) GetRectangle() Optional[dom.Rect] {
+	q, err := e.getContentQuad(false)
 	e.log("GetRectangle", "quad", q, "err", err)
 	if err != nil {
-		return Maybe[dom.Rect]{err: err}
+		return Optional[dom.Rect]{err: err}
 	}
 	rect := dom.Rect{
 		X:      q[0].X,
@@ -407,12 +433,14 @@ func (e Node) GetRectangle() Maybe[dom.Rect] {
 		Width:  q[1].X - q[0].X,
 		Height: q[3].Y - q[0].Y,
 	}
-	return Maybe[dom.Rect]{value: rect}
+	return Optional[dom.Rect]{value: rect}
 }
 
-func (e Node) SelectByValues(values ...string) error {
-	_, err := e.eval(`function(a){const b=Array.from(this.options);this.value=void 0;for(const c of b)if(c.selected=a.includes(c.value),c.selected&&!this.multiple)break}`, values)
-	defer e.log("SelectByValues", "values", values, "err", &err)
+func (e Node) SelectByValues(values ...string) (err error) {
+	defer func() {
+		e.log("SelectByValues", "values", values, "err", err)
+	}()
+	_, err = e.eval(`function(a){const b=Array.from(this.options);this.value=void 0;for(const c of b)if(c.selected=a.includes(c.value),c.selected&&!this.multiple)break}`, values)
 	if err != nil {
 		return err
 	}
@@ -425,22 +453,24 @@ func (e Node) SelectByTexts(values ...string) error {
 	return nil
 }
 
-func (e Node) GetSelected(textContent bool) Maybe[[]string] {
+func (e Node) GetSelected(textContent bool) Optional[[]string] {
 	values, err := e.eval(`function(text){return Array.from(this.options).filter(a=>a.selected).map(a=>text?a.textContent.trim():a.value)}`, textContent)
 	e.log("GetSelected", "returnTextContent", textContent, "returnAttributeValue", !textContent, "values", values, "err", err)
 	if err != nil {
-		return Maybe[[]string]{err: err}
+		return Optional[[]string]{err: err}
 	}
 	stringsValues := make([]string, len(values.([]any)))
 	for n, val := range values.([]any) {
 		stringsValues[n] = val.(string)
 	}
-	return Maybe[[]string]{value: stringsValues}
+	return Optional[[]string]{value: stringsValues}
 }
 
-func (e Node) SetCheckbox(check bool) error {
-	_, err := e.eval(`function(v){this.checked=v}`, check)
-	defer e.log("SetCheckbox", "check", check, "err", &err)
+func (e Node) SetCheckbox(check bool) (err error) {
+	defer func() {
+		e.log("SetCheckbox", "check", check, "err", err)
+	}()
+	_, err = e.eval(`function(v){this.checked=v}`, check)
 	if err != nil {
 		return err
 	}
@@ -448,7 +478,7 @@ func (e Node) SetCheckbox(check bool) error {
 	return err
 }
 
-func (e Node) IsChecked() Maybe[bool] {
+func (e Node) IsChecked() Optional[bool] {
 	value, err := e.eval(`function(){return this.checked}`)
 	e.log("IsChecked", "value", value, "err", err)
 	return castValue[bool](value, err)
@@ -475,15 +505,15 @@ func (node *Node) Foreach(predicate func(*Node) error) error {
 	return nil
 }
 
-func (node *Node) First(predicate func(*Node) (bool, error)) MaybeNode {
+func (node *Node) First(predicate func(*Node) (bool, error)) Optional[*Node] {
 	for p := node; p != nil; p = p.NextSibling() {
 		val, err := predicate(p)
 		if err != nil {
-			return MaybeNode{err: err}
+			return Optional[*Node]{err: err}
 		}
 		if val {
-			return MaybeNode{value: p}
+			return Optional[*Node]{value: p}
 		}
 	}
-	return MaybeNode{err: ErrNoPredicateMatch}
+	return Optional[*Node]{err: ErrNoPredicateMatch}
 }

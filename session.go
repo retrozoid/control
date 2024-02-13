@@ -63,6 +63,14 @@ func (s *Session) Transport() *cdp.Transport {
 
 func (s *Session) Log(level slog.Level, msg string, args ...any) {
 	args = append(args, "sessionId", s.sessionID)
+	for n := range args {
+		switch a := args[n].(type) {
+		case error:
+			if a != nil {
+				level = slog.LevelWarn
+			}
+		}
+	}
 	s.transport.Log(level, msg, args...)
 }
 
