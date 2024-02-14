@@ -32,6 +32,11 @@ func main() {
 	})
 	log.Println(val)
 
+	// a := session.Frame.Evaluate(`Date`, true)
+	// log.Print(a.Value())
+
+	session.Frame.Query(`.pager__count-pages`).Value().Clip().Value()
+
 	backoff.Exec(func() error {
 		return session.Frame.Query(`.pager__count-pages`).Value().Click()
 	})

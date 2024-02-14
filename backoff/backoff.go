@@ -8,7 +8,7 @@ import (
 var (
 	DefaultBackoffTimeout = time.Second * 10
 	DefaultBackoffTick    = 500 * time.Millisecond
-	DefaultBackoffAttempt = 7
+	// DefaultBackoffAttempt = 7
 )
 
 // Sleep ...

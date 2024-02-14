@@ -34,14 +34,9 @@ type JsObject interface {
 	ObjectID() runtime.RemoteObjectId
 }
 
-// todo
-type JsFunction interface {
-	Call(...any) any
-}
+type RemoteObject runtime.RemoteObjectId
 
-type remoteObjectId runtime.RemoteObjectId
-
-func (r remoteObjectId) ObjectID() runtime.RemoteObjectId {
+func (r RemoteObject) ObjectID() runtime.RemoteObjectId {
 	return runtime.RemoteObjectId(r)
 }
 
@@ -49,11 +44,36 @@ func getNodeType(deepSerializedValue any) nodeType {
 	return nodeType(deepSerializedValue.(map[string]any)["nodeType"].(float64))
 }
 
-// implemented
-// + undefined, null, string, number, boolean, promise, node, array, object
-// unimplemented
-// - bigint, regexp, date, symbol, function, map, set, weakmap, weakset, error, proxy, typedarray, arraybuffer, window
+func deepUnserialize(self string, value any) any {
+	switch self {
+	case "boolean", "string", "number":
+		return value
+	case "undefined", "null":
+		return nil
+	case "array":
+		arr := []any{}
+		for _, e := range value.([]any) {
+			pair := e.(map[string]any)
+			arr = append(arr, deepUnserialize(pair["type"].(string), pair["value"]))
+		}
+		return arr
+	case "object":
+		obj := map[string]any{}
+		for _, e := range value.([]any) {
+			pair := e.([]any)
+			val := pair[1].(map[string]any)
+			obj[pair[0].(string)] = deepUnserialize(val["type"].(string), val["value"])
+		}
+		return obj
+	default:
+		return value
+	}
+}
 
+// implemented
+// + undefined, null, string, number, boolean, promise, node, array, object, bigint, function, window
+// unimplemented
+// - regexp, date, symbol, map, set, weakmap, weakset, error, proxy, typedarray, arraybuffer
 func (f *Frame) unserialize(value *runtime.RemoteObject) (any, error) {
 	if value == nil {
 		return nil, errors.New("can't unserialize nil RemoteObject")
@@ -61,72 +81,51 @@ func (f *Frame) unserialize(value *runtime.RemoteObject) (any, error) {
 	if value.DeepSerializedValue == nil {
 		return value.Value, nil
 	}
-	deepSerializedValue := value.DeepSerializedValue
 
-	switch deepSerializedValue.Type {
+	switch value.DeepSerializedValue.Type {
 
-	// primitive types
-	case "undefined", "null", "string", "number", "boolean":
-		return deepSerializedValue.Value, nil
-
-	case "promise":
-		return remoteObjectId(value.ObjectId), nil
+	case "promise", "function", "weakmap":
+		return RemoteObject(value.ObjectId), nil
 
 	case "node":
-		switch getNodeType(deepSerializedValue.Value) {
+		switch getNodeType(value.DeepSerializedValue.Value) {
 		case nodeTypeElement, nodeTypeDocument:
-			return &Node{JsObject: remoteObjectId(value.ObjectId), frame: f}, nil
+			return &Node{JsObject: RemoteObject(value.ObjectId), frame: f}, nil
 		default:
 			return nil, errors.New("unsupported type of node")
 		}
 
-		/* It returns the head of linked nodes list (1th element), not array */
 	case "nodelist":
+		/* It returns the head of linked nodes list (1th element), not array */
 		if value.Description == "NodeList(0)" {
 			return nil, nil
 		}
-		descriptor, err := f.getProperties(remoteObjectId(value.ObjectId), true, false, false, false)
-		if err != nil {
-			return nil, err
-		}
-		var (
-			head *Node
-			ptr  *Node
-			i    = 0
-		)
-		for _, d := range descriptor.Result {
-			if d.Enumerable {
-				i++
-				n := &Node{
-					JsObject:    remoteObjectId(d.Value.ObjectId),
-					cssSelector: d.Value.Description + fmt.Sprintf("(%d)", i),
-					frame:       f,
-				}
-				if head == nil {
-					head, ptr = n, n
-				} else {
-					ptr.sibling = n
-					ptr = ptr.sibling
-				}
-			}
-		}
-		return head, nil
-
-	case "array":
-		array := value.DeepSerializedValue.Value.([]any)
-		var t = make([]any, len(array))
-		for n, a := range array {
-			t[n] = a.(map[string]any)["value"]
-		}
-		return t, nil
-
-	case "object":
-		//  [[x map[type:number value:543.8359375]] [y map[type:number value:5211.6328125]] [width map[type:number value:112.3203125]] [height map[type:number value:22.3984375]]]
-		return value.DeepSerializedValue.Value.(any), nil
+		return f.requestNodeList(value.ObjectId)
 
 	default:
-		return value.Value, nil
+		return deepUnserialize(value.DeepSerializedValue.Type, value.DeepSerializedValue.Value), nil
 	}
+}
+
+func (f *Frame) requestNodeList(objectId runtime.RemoteObjectId) (*NodeList, error) {
+	descriptor, err := f.getProperties(RemoteObject(objectId), true, false, false, false)
+	if err != nil {
+		return nil, err
+	}
+	var i = 0
+	nodeList := &NodeList{}
+	for _, d := range descriptor.Result {
+		if d.Enumerable {
+			i++
+			n := &Node{
+				JsObject:    RemoteObject(d.Value.ObjectId),
+				cssSelector: d.Value.Description + fmt.Sprintf("(%d)", i),
+				frame:       f,
+			}
+			nodeList.Nodes = append(nodeList.Nodes, n)
+		}
+	}
+	return nodeList, nil
 }
 
 func (f Frame) toCallArgument(args ...any) (arguments []*runtime.CallArgument) {

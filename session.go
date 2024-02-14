@@ -78,12 +78,12 @@ func (s *Session) GetID() string {
 	return s.sessionID
 }
 
-func (s *Session) IsContextDone() error {
+func (s *Session) IsDone() bool {
 	select {
 	case <-s.context.Done():
-		return nil
+		return true
 	default:
-		return errors.New("session is not done")
+		return false
 	}
 }
 

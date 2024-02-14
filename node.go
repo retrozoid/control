@@ -3,18 +3,22 @@ package control
 import (
 	"errors"
 	"fmt"
+	"log"
 	"log/slog"
 	"math"
 
 	"github.com/retrozoid/control/protocol/dom"
+	"github.com/retrozoid/control/protocol/overlay"
 	"github.com/retrozoid/control/protocol/page"
 	"github.com/retrozoid/control/protocol/runtime"
 )
 
 type NoSuchSelectorError string
 
-var ErrElementNotClickable = errors.New("node is not clickable")
-var ErrNoPredicateMatch = errors.New("no predicate match")
+var (
+	ErrElementNotClickable = errors.New("node is not clickable")
+	ErrNoPredicateMatch    = errors.New("no predicate match")
+)
 
 func (s NoSuchSelectorError) Error() string {
 	return fmt.Sprintf("no such selector found: `%s`", string(s))
@@ -22,14 +26,12 @@ func (s NoSuchSelectorError) Error() string {
 
 type Node struct {
 	JsObject
-	self        *dom.Node
 	cssSelector string
 	frame       *Frame
-	sibling     *Node
 }
 
-func (n Node) NextSibling() *Node {
-	return n.sibling
+type NodeList struct {
+	Nodes []*Node
 }
 
 type Point struct {
@@ -78,6 +80,18 @@ func (q Quad) Area() float64 {
 	return math.Abs(area)
 }
 
+func (e Node) Highlight() error {
+	if e.cssSelector != documentElement {
+		return overlay.HighlightNode(e.frame, overlay.HighlightNodeArgs{
+			HighlightConfig: &overlay.HighlightConfig{
+				ContentColor: &dom.RGBA{R: 255, G: 0, B: 255, A: 0.2},
+			},
+			ObjectId: e.ObjectID(),
+		})
+	}
+	return nil
+}
+
 func (e Node) ObjectID() runtime.RemoteObjectId {
 	return e.JsObject.ObjectID()
 }
@@ -114,33 +128,41 @@ func (e Node) log(msg string, args ...any) {
 
 func (e Node) HasClass(class string) Optional[bool] {
 	value, err := e.eval(`function(c){return this.classList.contains(c)}`)
-	return castValue[bool](value, err)
+	return optional[bool](value, err)
 }
 
 func (e Node) CallFunctionOn(function string, args ...any) Optional[any] {
 	value, err := e.eval(function, args...)
 	e.log("CallFunctionOn", "function", function, "args", args, "value", value, "err", err)
-	return castValue[any](value, err)
+	return optional[any](value, err)
 }
 
 func (e Node) Query(cssSelector string) Optional[*Node] {
 	cssSelector = safeSelector(cssSelector)
-	var (
-		value, err = e.eval(`function(s){return this.querySelector(s)}`, cssSelector)
-		node       = e.frame.newNode(cssSelector, value, err)
-	)
-	e.log("Query", "cssSelector", cssSelector, "err", node.Err())
-	return node
+	value, err := e.eval(`function(s){return this.querySelector(s)}`, cssSelector)
+	opt := optional[*Node](value, err)
+	if opt.err == nil && opt.value == nil {
+		opt.err = NoSuchSelectorError(cssSelector)
+	}
+	if opt.value != nil {
+		if DebugHighlightEnabled {
+			_ = opt.value.Highlight()
+		}
+		opt.value.cssSelector = cssSelector
+	}
+	e.log("Query", "cssSelector", cssSelector, "err", opt.err)
+	return opt
 }
 
-func (e Node) QueryAll(cssSelector string) Optional[*Node] {
+func (e Node) QueryAll(cssSelector string) Optional[*NodeList] {
 	cssSelector = safeSelector(cssSelector)
-	var (
-		value, err = e.eval(`function(s){return this.querySelectorAll(s)}`, cssSelector)
-		node       = e.frame.newNode(cssSelector, value, err)
-	)
-	e.log("QueryAll", "cssSelector", cssSelector, "err", node.Err())
-	return node
+	value, err := e.eval(`function(s){return this.querySelectorAll(s)}`, cssSelector)
+	opt := optional[*NodeList](value, err)
+	if opt.err == nil && opt.value == nil {
+		opt.err = NoSuchSelectorError(cssSelector)
+	}
+	e.log("QueryAll", "cssSelector", cssSelector, "err", opt.err)
+	return opt
 }
 
 func (e Node) ToFrame() Optional[*Frame] {
@@ -170,13 +192,13 @@ func (e Node) ScrollIntoView() error {
 func (e Node) GetTextContent() Optional[string] {
 	value, err := e.eval(`function(){return this.textContent.trim()}`)
 	e.log("GetTextContent", "content", value, "err", err)
-	return castValue[string](value, err)
+	return optional[string](value, err)
 }
 
 func (e Node) GetValue() Optional[string] {
 	value, err := e.eval(`function(){switch(this.tagName){case"INPUT":case"TEXTAREA":return this.value;case"SELECT":return Array.from(this.selectedOptions).map(b=>b.innerText).join();default:return this.innerText||this.textContent.trim();}}`)
 	e.log("GetTextContent", "content", value, "err", err)
-	return castValue[string](value, err)
+	return optional[string](value, err)
 }
 
 func (e Node) Focus() error {
@@ -275,37 +297,6 @@ func (e Node) click() (err error) {
 	if err != nil {
 		return err
 	}
-	// layout, err := e.frame.GetLayout().Unwrap()
-	// if err != nil {
-	// 	return err
-	// }
-	// nodeForLocation, err := dom.GetNodeForLocation(e, dom.GetNodeForLocationArgs{
-	// 	X:                         int(point.X) + layout.CssLayoutViewport.PageX,
-	// 	Y:                         int(point.Y) + layout.CssLayoutViewport.PageY,
-	// 	IncludeUserAgentShadowDOM: true,
-	// 	IgnorePointerEventsNone:   true,
-	// })
-	// if err != nil {
-	// 	return err
-	// }
-	// if nodeForLocation.FrameId != e.frame.id {
-	// 	return ErrElementNotClickable
-	// }
-	// self, err := dom.DescribeNode(e, dom.DescribeNodeArgs{
-	// 	ObjectId: e.ObjectID(),
-	// })
-	// if err != nil {
-	// 	return err
-	// }
-	// if nodeForLocation.BackendNodeId != self.Node.BackendNodeId {
-	// 	// overlay, err := dom.DescribeNode(e, dom.DescribeNodeArgs{
-	// 	// 	BackendNodeId: nodeForLocation.BackendNodeId,
-	// 	// })
-	// 	// if err != nil {
-	// 	// 	return err
-	// 	// }
-	// 	return ErrElementNotClickable
-	// }
 	promise, err := e.addEventListener("click")
 	if err != nil {
 		return err
@@ -337,6 +328,7 @@ func (e Node) Clip() Optional[page.Viewport] {
 	if err != nil {
 		return Optional[page.Viewport]{err: err}
 	}
+	log.Println(value)
 	if arr, ok := value.([]any); ok {
 		return Optional[page.Viewport]{
 			value: page.Viewport{
@@ -406,7 +398,7 @@ func (e Node) GetComputedStyle(style string, pseudo string) Optional[string] {
 	}
 	value, err := e.eval(`function(p,s){return getComputedStyle(this, p)[s]}`, pseudoVar, style)
 	e.log("GetComputedStyle", "style", style, "pseudo", pseudo, "value", value, "err", err)
-	return castValue[string](value, err)
+	return optional[string](value, err)
 }
 
 func (e Node) SetAttribute(attr, value string) error {
@@ -418,7 +410,7 @@ func (e Node) SetAttribute(attr, value string) error {
 func (e Node) GetAttribute(attr string) Optional[string] {
 	value, err := e.eval(`function(a){return this.getAttribute(a)}`, attr)
 	e.log("GetAttribute", "attr", attr, "value", value, "err", err)
-	return castValue[string](value, err)
+	return optional[string](value, err)
 }
 
 func (e Node) GetRectangle() Optional[dom.Rect] {
@@ -481,13 +473,13 @@ func (e Node) SetCheckbox(check bool) (err error) {
 func (e Node) IsChecked() Optional[bool] {
 	value, err := e.eval(`function(){return this.checked}`)
 	e.log("IsChecked", "value", value, "err", err)
-	return castValue[bool](value, err)
+	return optional[bool](value, err)
 }
 
-func (node *Node) Map(mapFn func(*Node) (string, error)) ([]string, error) {
+func (nl NodeList) Map(mapFn func(*Node) (string, error)) ([]string, error) {
 	var r []string
-	for p := node; p != nil; p = p.NextSibling() {
-		val, err := mapFn(p)
+	for _, node := range nl.Nodes {
+		val, err := mapFn(node)
 		if err != nil {
 			return r, err
 		}
@@ -496,23 +488,23 @@ func (node *Node) Map(mapFn func(*Node) (string, error)) ([]string, error) {
 	return r, nil
 }
 
-func (node *Node) Foreach(predicate func(*Node) error) error {
-	for p := node; p != nil; p = p.NextSibling() {
-		if err := predicate(p); err != nil {
+func (nl NodeList) Foreach(predicate func(*Node) error) error {
+	for _, node := range nl.Nodes {
+		if err := predicate(node); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (node *Node) First(predicate func(*Node) (bool, error)) Optional[*Node] {
-	for p := node; p != nil; p = p.NextSibling() {
-		val, err := predicate(p)
+func (nl NodeList) First(predicate func(*Node) (bool, error)) Optional[*Node] {
+	for _, node := range nl.Nodes {
+		val, err := predicate(node)
 		if err != nil {
 			return Optional[*Node]{err: err}
 		}
 		if val {
-			return Optional[*Node]{value: p}
+			return Optional[*Node]{value: node}
 		}
 	}
 	return Optional[*Node]{err: ErrNoPredicateMatch}

@@ -4,13 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"reflect"
 	"strings"
 	"time"
 
 	"github.com/retrozoid/control/protocol/common"
-	"github.com/retrozoid/control/protocol/dom"
-	"github.com/retrozoid/control/protocol/overlay"
 	"github.com/retrozoid/control/protocol/page"
 )
 
@@ -19,50 +16,9 @@ const (
 	truncateLongStringLen = 1024
 )
 
-type Optional[T any] struct {
-	value T
-	err   error
-}
-
-func castValue[T any](value any, err error) Optional[T] {
-	if err != nil {
-		return Optional[T]{err: err}
-	}
-	var t T
-	if value == nil {
-		return Optional[T]{value: t}
-	}
-	var ok bool
-	if t, ok = value.(T); ok {
-		return Optional[T]{value: t}
-	}
-	return Optional[T]{err: fmt.Errorf("can't cast %s to %s", reflect.TypeOf(value), reflect.TypeOf(t))}
-}
-
-func (may Optional[T]) Unwrap() (T, error) {
-	return may.value, may.err
-}
-
-func (may Optional[T]) Err() error {
-	return may.err
-}
-
-func (may Optional[T]) Value() T {
-	if may.err != nil {
-		panic(may.err)
-	}
-	return may.value
-}
-
-func (may Optional[T]) IfPresent(f func(T)) {
-	if may.err == nil {
-		f(may.value)
-	}
-}
-
 type Queryable interface {
 	Query(string) Optional[*Node]
-	QueryAll(string) Optional[*Node]
+	QueryAll(string) Optional[*NodeList]
 	OwnFrame() *Frame
 }
 
@@ -155,7 +111,7 @@ func truncate(value string, length int) string {
 		b.WriteString(value[:length])
 		b.WriteString(" (truncated ")
 		b.WriteString(fmt.Sprint(len(value[length:])))
-		b.WriteString(")")
+		b.WriteString(" bytes)")
 		return b.String()
 	}
 	return value
@@ -167,29 +123,6 @@ func (f Frame) Evaluate(expression string, awaitPromise bool) Optional[any] {
 	return Optional[any]{value: value, err: err}
 }
 
-func (f Frame) newNode(selector string, value any, err error) Optional[*Node] {
-	if err != nil {
-		return Optional[*Node]{err: err}
-	}
-	if value == nil {
-		return Optional[*Node]{err: NoSuchSelectorError(selector)}
-	}
-	if n, ok := value.(*Node); ok {
-		if DebugHighlightEnabled && selector != documentElement {
-			_ = overlay.HighlightNode(f, overlay.HighlightNodeArgs{
-				HighlightConfig: &overlay.HighlightConfig{
-					ContentColor: &dom.RGBA{R: 255, G: 0, B: 255, A: 0.2},
-				},
-				ObjectId: n.ObjectID(),
-			})
-		}
-		n.cssSelector = selector
-		return Optional[*Node]{value: n}
-	}
-	f.Log(slog.LevelError, "can't cast remote object to Node", "value", value)
-	return Optional[*Node]{err: errors.New("can't cast remote object to Node")}
-}
-
 func safeSelector(v string) string {
 	v = strings.TrimSpace(v)
 	v = strings.ReplaceAll(v, `"`, `\"`)
@@ -198,7 +131,11 @@ func safeSelector(v string) string {
 
 func (f Frame) Document() Optional[*Node] {
 	value, err := f.evaluate(documentElement, true)
-	return f.newNode(documentElement, value, err)
+	opt := optional[*Node](value, err)
+	if opt.err == nil && opt.value == nil {
+		opt.err = NoSuchSelectorError(documentElement)
+	}
+	return opt
 }
 
 func (f Frame) Query(cssSelector string) Optional[*Node] {
@@ -209,10 +146,10 @@ func (f Frame) Query(cssSelector string) Optional[*Node] {
 	return doc.Value().Query(cssSelector)
 }
 
-func (f Frame) QueryAll(cssSelector string) Optional[*Node] {
+func (f Frame) QueryAll(cssSelector string) Optional[*NodeList] {
 	doc := f.Document()
 	if doc.Err() != nil {
-		return doc
+		return Optional[*NodeList]{err: doc.err}
 	}
 	return doc.Value().QueryAll(cssSelector)
 }

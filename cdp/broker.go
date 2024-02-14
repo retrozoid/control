@@ -35,7 +35,7 @@ func (b broker) run() {
 				close(msgCh)
 			}
 			close(b.sub)
-			close(b.unsub)
+			// close(b.unsub)
 			close(b.publish)
 			return
 
