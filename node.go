@@ -278,11 +278,6 @@ func (e Node) Upload(files ...string) error {
 	return err
 }
 
-func (e Node) addEventListener(name string) (JsObject, error) {
-	eval := fmt.Sprintf(`()=>new Promise(e=>{let t=i=>{this.removeEventListener('%s',t),e(i)};this.addEventListener('%s',t,{capture:!0})})`, name, name)
-	return e.asyncEval(eval)
-}
-
 func (e Node) Click() error {
 	err := e.click()
 	e.log("Click", "err", err)
@@ -297,17 +292,20 @@ func (e Node) click() (err error) {
 	if err != nil {
 		return err
 	}
-	promise, err := e.addEventListener("click")
+	onClick, err := e.asyncEval(`function(){return new Promise((e,j)=>{let t=i=>{this.removeEventListener('click',t),e(i)};this.addEventListener('click',t,{capture:!0}),setTimeout(j,500)})}`)
 	if err != nil {
 		return err
 	}
 	if err = e.frame.Click(point); err != nil {
 		return err
 	}
-	_, err = e.frame.AwaitPromise(promise)
-	if err != nil && err.Error() == `Cannot find context with specified id` {
+	_, err = e.frame.AwaitPromise(onClick)
+	if err != nil {
 		// click can cause navigate with context lost
-		return nil
+		if err.Error() == `Cannot find context with specified id` {
+			return nil
+		}
+		return err
 	}
 	return err
 }

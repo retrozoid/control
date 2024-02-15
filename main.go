@@ -36,10 +36,10 @@ func TakeWithContext(ctx context.Context, logger *slog.Logger, chromeArgs ...str
 	}
 	teardown := func() {
 		if err := transport.Close(); err != nil {
-			transport.Log(slog.LevelError, "can't close transport", err, err)
+			transport.Log(slog.LevelError, "can't close transport", "err", err)
 		}
 		if err = browser.WaitCloseGracefully(); err != nil {
-			transport.Log(slog.LevelError, "can't close browser gracefully", err, err)
+			transport.Log(slog.LevelError, "can't close browser gracefully", "err", err)
 		}
 	}
 	return session, teardown, nil

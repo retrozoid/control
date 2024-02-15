@@ -1,7 +1,7 @@
 package control
 
 import (
-	"errors"
+	"fmt"
 	"reflect"
 )
 
@@ -11,18 +11,18 @@ type Optional[T any] struct {
 }
 
 func castTo[T any](value any, err error) (T, error) {
-	var t T
+	var nilValue T
 	if err != nil {
-		return t, err
+		return nilValue, err
 	}
 	if value == nil {
-		return t, nil
+		return nilValue, nil
 	}
 	switch typed := value.(type) {
 	case T:
 		return typed, nil
 	default:
-		return t, errors.New("can't cast remote object to " + reflect.TypeOf(t).String())
+		return nilValue, fmt.Errorf("can't cast %s to %s", reflect.TypeOf(value), reflect.TypeOf(nilValue))
 	}
 }
 
