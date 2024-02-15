@@ -34,7 +34,6 @@ func (f Frame) GetSession() *Session {
 }
 
 func (f Frame) executionContextID() string {
-	// todo retry
 	return f.session.frames.Get(f.id)
 }
 
@@ -139,11 +138,11 @@ func (f Frame) Document() Optional[*Node] {
 }
 
 func (f Frame) Query(cssSelector string) Optional[*Node] {
-	doc := f.Document()
-	if doc.Err() != nil {
-		return doc
+	doc, err := f.Document().Unwrap()
+	if err != nil {
+		return Optional[*Node]{err: err}
 	}
-	return doc.Value().Query(cssSelector)
+	return doc.Query(cssSelector)
 }
 
 func (f Frame) QueryAll(cssSelector string) Optional[*NodeList] {

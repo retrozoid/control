@@ -17,18 +17,23 @@ type broker struct {
 func makeBroker() broker {
 	return broker{
 		cancel:  make(chan struct{}),
-		publish: make(chan Message, 10),
-		sub:     make(chan subchan, 1),
-		unsub:   make(chan chan Message, 1),
+		publish: make(chan Message, 1),
+		sub:     make(chan subchan),
+		unsub:   make(chan chan Message),
 	}
 }
 
 func (b broker) run() {
-	var (
-		value = map[chan Message]string{}
-	)
+	var value = map[chan Message]string{}
 	for {
 		select {
+
+		case subchan := <-b.sub:
+			value[subchan.channel] = subchan.sessionID
+
+		case channel := <-b.unsub:
+			delete(value, channel)
+			close(channel)
 
 		case <-b.cancel:
 			for msgCh := range value {
@@ -39,22 +44,13 @@ func (b broker) run() {
 			close(b.publish)
 			return
 
-		case subchan := <-b.sub:
-			value[subchan.channel] = subchan.sessionID
-
-		case channel := <-b.unsub:
-			delete(value, channel)
-			close(channel)
-
 		case message := <-b.publish:
-			for msgCh, channelID := range value {
-				if message.SessionID == "" || channelID == "" || message.SessionID == channelID {
-					select {
-					case msgCh <- message:
-					default:
-					}
+			for msgCh, sessionID := range value {
+				if message.SessionID == "" || sessionID == "" || message.SessionID == sessionID {
+					msgCh <- message
 				}
 			}
+
 		}
 	}
 }
