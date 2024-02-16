@@ -189,15 +189,15 @@ func (e Node) ScrollIntoView() error {
 	})
 }
 
-func (e Node) GetTextContent() Optional[string] {
+func (e Node) GetRawTextContent() Optional[string] {
 	value, err := e.eval(`function(){return this.textContent.trim()}`)
-	e.log("GetTextContent", "content", value, "err", err)
+	e.log("GetRawTextContent", "content", value, "err", err)
 	return optional[string](value, err)
 }
 
-func (e Node) GetValue() Optional[string] {
-	value, err := e.eval(`function(){switch(this.tagName){case"INPUT":case"TEXTAREA":return this.value;case"SELECT":return Array.from(this.selectedOptions).map(b=>b.innerText).join();default:return this.innerText||this.textContent.trim();}}`)
-	e.log("GetTextContent", "content", value, "err", err)
+func (e Node) GetText() Optional[string] {
+	value, err := e.eval(`function(){return this.innerText}`)
+	e.log("GetText", "content", value, "err", err)
 	return optional[string](value, err)
 }
 
@@ -234,18 +234,14 @@ func (e Node) insertText(value string) (err error) {
 	return nil
 }
 
-func (e Node) SetValue(value string) (err error) {
-	defer func() {
-		e.log("SetValue", "value", value, "err", err)
-	}()
-	if err = e.ClearValue(); err != nil {
+func (e Node) SetValue(value string) error {
+	if err := e.Clear(); err != nil {
 		return err
 	}
-	err = e.InsertText(value)
-	return
+	return e.InsertText(value)
 }
 
-func (e Node) ClearValue() (err error) {
+func (e Node) Clear() (err error) {
 	defer func() {
 		e.log("ClearValue", "err", err)
 	}()

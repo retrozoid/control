@@ -4,16 +4,12 @@ import (
 	"context"
 	"log"
 	"log/slog"
-	// "os"
 
 	"github.com/retrozoid/control"
 	"github.com/retrozoid/control/backoff"
 )
 
 func main() {
-	// slogger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-	// 	Level: slog.LevelDebug,
-	// }))
 	session, dfr, err := control.TakeWithContext(context.TODO(), slog.Default(), "--no-startup-window")
 	if err != nil {
 		panic(err)
@@ -27,13 +23,10 @@ func main() {
 
 	val := backoff.Value(func() ([]string, error) {
 		return session.Frame.QueryAll(".grid-product__title-inner").Value().Map(func(n *control.Node) (string, error) {
-			return n.GetTextContent().Unwrap()
+			return n.GetText().Unwrap()
 		})
 	})
 	log.Println(val)
-
-	// a := session.Frame.Evaluate(`Date`, true)
-	// log.Print(a.Value())
 
 	session.Frame.Query(`.pager__count-pages`).Value().Clip().Value()
 
