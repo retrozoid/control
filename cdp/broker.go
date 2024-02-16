@@ -1,6 +1,6 @@
 package cdp
 
-var BrokerChannelSize = 10
+var BrokerChannelSize = 50000
 
 type subchan struct {
 	sessionID string
@@ -17,7 +17,7 @@ type broker struct {
 func makeBroker() broker {
 	return broker{
 		cancel:  make(chan struct{}),
-		publish: make(chan Message, 1),
+		publish: make(chan Message),
 		sub:     make(chan subchan),
 		unsub:   make(chan chan Message),
 	}

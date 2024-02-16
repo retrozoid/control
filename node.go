@@ -161,7 +161,7 @@ func (e Node) QueryAll(cssSelector string) Optional[*NodeList] {
 	if opt.err == nil && opt.value == nil {
 		opt.err = NoSuchSelectorError(cssSelector)
 	}
-	e.log("QueryAll", "cssSelector", cssSelector, "err", opt.err)
+	e.log("QueryAll", "cssSelector", cssSelector, "count", len(opt.value.Nodes), "err", opt.err)
 	return opt
 }
 

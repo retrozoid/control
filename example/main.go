@@ -4,13 +4,16 @@ import (
 	"context"
 	"log"
 	"log/slog"
+	// "os"
 
 	"github.com/retrozoid/control"
 	"github.com/retrozoid/control/backoff"
 )
 
 func main() {
-	session, dfr, err := control.TakeWithContext(context.TODO(), slog.Default(), "--no-startup-window")
+	// sl := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
+	sl := slog.Default()
+	session, dfr, err := control.TakeWithContext(context.TODO(), sl, "--no-startup-window")
 	if err != nil {
 		panic(err)
 	}
