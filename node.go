@@ -217,33 +217,40 @@ func (e Node) Blur() error {
 	return err
 }
 
+func (e Node) clearInput() error {
+	_, err := e.eval(`function(){('INPUT'===this.nodeName||'TEXTAREA'===this.nodeName)?this.value='':this.innerText=''}`)
+	return err
+}
+
+func (e Node) dispatchInputChange() error {
+	return e.dispatchEvents("input", "change", "blur")
+}
+
 func (e Node) InsertText(value string) error {
-	err := e.insertText(value)
+	err := e.setText(value, false)
 	e.log("InsertText", "text", value, "err", err)
 	return err
 }
 
-func (e Node) insertText(value string) (err error) {
+func (e Node) SetText(value string) error {
+	err := e.setText(value, true)
+	e.log("SetText", "value", value, "err", err)
+	return err
+}
+
+func (e Node) setText(value string, clearBefore bool) (err error) {
 	if err = e.Focus(); err != nil {
 		return err
+	}
+	if clearBefore {
+		if err = e.clearInput(); err != nil {
+			return err
+		}
 	}
 	if err = NewKeyboard(e).Insert(value); err != nil {
 		return err
 	}
-	if err = e.dispatchEvents("input", "change"); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (e Node) SetText(value string) (err error) {
-	if err = e.Clear(); err != nil {
-		return err
-	}
-	if err = e.InsertText(value); err != nil {
-		return err
-	}
-	if err = e.Blur(); err != nil {
+	if err = e.dispatchInputChange(); err != nil {
 		return err
 	}
 	return nil
@@ -253,15 +260,16 @@ func (e Node) Clear() (err error) {
 	defer func() {
 		e.log("ClearValue", "err", err)
 	}()
-	_, err = e.eval(`function(){('INPUT'===this.nodeName||'TEXTAREA'===this.nodeName)?this.value='':this.innerText=''}`)
-	if err != nil {
+	if err = e.Focus(); err != nil {
 		return err
 	}
-	if err = e.dispatchEvents("input", "change"); err != nil {
+	if err = e.clearInput(); err != nil {
 		return err
 	}
-	err = e.Blur() // to fire change event
-	return err
+	if err = e.dispatchInputChange(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (e Node) Visibility() bool {
