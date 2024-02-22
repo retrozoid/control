@@ -3,7 +3,6 @@ package control
 import (
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"math"
 
@@ -113,7 +112,10 @@ func (e Node) asyncEval(function string, args ...any) (JsObject, error) {
 	if err != nil {
 		return nil, err
 	}
-	return value.(JsObject), nil
+	if v, ok := value.(JsObject); ok {
+		return v, nil
+	}
+	return nil, fmt.Errorf("interface conversion failed, `%+v` not JsObject", value)
 }
 
 func (e Node) dispatchEvents(events ...any) error {
@@ -161,7 +163,7 @@ func (e Node) QueryAll(cssSelector string) Optional[*NodeList] {
 	if opt.err == nil && opt.value == nil {
 		opt.err = NoSuchSelectorError(cssSelector)
 	}
-	e.log("QueryAll", "cssSelector", cssSelector, "count", len(opt.value.Nodes), "err", opt.err)
+	e.log("QueryAll", "cssSelector", cssSelector, "err", opt.err)
 	return opt
 }
 
@@ -234,11 +236,17 @@ func (e Node) insertText(value string) (err error) {
 	return nil
 }
 
-func (e Node) SetValue(value string) error {
-	if err := e.Clear(); err != nil {
+func (e Node) SetText(value string) (err error) {
+	if err = e.Clear(); err != nil {
 		return err
 	}
-	return e.InsertText(value)
+	if err = e.InsertText(value); err != nil {
+		return err
+	}
+	if err = e.Blur(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (e Node) Clear() (err error) {
@@ -288,9 +296,9 @@ func (e Node) click() (err error) {
 	if err != nil {
 		return err
 	}
-	onClick, err := e.asyncEval(`function(){return new Promise((e,j)=>{let t=i=>{this.removeEventListener('click',t),e(i)};this.addEventListener('click',t,{capture:!0}),setTimeout(j,500)})}`)
+	onClick, err := e.asyncEval(`function(d){return new Promise((e,j)=>{let t=i=>{this.removeEventListener('click',t),e(i)};this.addEventListener('click',t,{capture:!0});setTimeout(j,d);})}`, 500)
 	if err != nil {
-		return err
+		return errors.Join(err, errors.New("addEventListener for click failed"))
 	}
 	if err = e.frame.Click(point); err != nil {
 		return err
@@ -322,7 +330,6 @@ func (e Node) Clip() Optional[page.Viewport] {
 	if err != nil {
 		return Optional[page.Viewport]{err: err}
 	}
-	log.Println(value)
 	if arr, ok := value.([]any); ok {
 		return Optional[page.Viewport]{
 			value: page.Viewport{
@@ -373,16 +380,21 @@ func (e Node) getContentQuad(viewportCorrection bool) (Quad, error) {
 	return nil, errors.New("node is out of viewport")
 }
 
-func (e Node) Hover() (err error) {
+func (e Node) Hover() error {
+	err := e.hover()
+	e.log("Hover", "err", err)
+	return err
+}
+
+func (e Node) hover() error {
+	if err := e.ScrollIntoView(); err != nil {
+		return err
+	}
 	p, err := e.ClickablePoint().Unwrap()
-	defer func() {
-		e.log("Hover", "err", err)
-	}()
 	if err != nil {
 		return err
 	}
-	err = e.frame.Hover(p)
-	return err
+	return e.frame.Hover(p)
 }
 
 func (e Node) GetComputedStyle(style string, pseudo string) Optional[string] {

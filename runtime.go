@@ -51,6 +51,9 @@ func deepUnserialize(self string, value any) any {
 	case "undefined", "null":
 		return nil
 	case "array":
+		if value == nil {
+			return value
+		}
 		arr := []any{}
 		for _, e := range value.([]any) {
 			pair := e.(map[string]any)
@@ -58,11 +61,16 @@ func deepUnserialize(self string, value any) any {
 		}
 		return arr
 	case "object":
+		if value == nil {
+			return value
+		}
 		obj := map[string]any{}
 		for _, e := range value.([]any) {
-			pair := e.([]any)
-			val := pair[1].(map[string]any)
-			obj[pair[0].(string)] = deepUnserialize(val["type"].(string), val["value"])
+			var (
+				val  = e.([]any)
+				pair = val[1].(map[string]any)
+			)
+			obj[val[0].(string)] = deepUnserialize(pair["type"].(string), pair["value"])
 		}
 		return obj
 	default:

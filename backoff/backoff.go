@@ -1,7 +1,9 @@
 package backoff
 
 import (
+	"log"
 	"math/rand"
+	"runtime/debug"
 	"time"
 )
 
@@ -33,6 +35,7 @@ func recoverFunc(f func() error) (err any) {
 func recoverFuncValue[T any](f func() (T, error)) (value T, err any) {
 	defer func() {
 		if pnc := recover(); pnc != nil {
+			log.Println(string(debug.Stack()))
 			err = pnc
 		}
 	}()
