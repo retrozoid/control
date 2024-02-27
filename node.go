@@ -213,7 +213,6 @@ func (e Node) Focus() error {
 
 func (e Node) Blur() error {
 	_, err := e.eval(`function(){this.blur()}`)
-	e.log("Blur", "err", err)
 	return err
 }
 
@@ -223,7 +222,11 @@ func (e Node) clearInput() error {
 }
 
 func (e Node) dispatchInputChange() error {
-	return e.dispatchEvents("input", "change", "blur")
+	err := e.dispatchEvents("input", "change", "blur")
+	if err != nil {
+		return err
+	}
+	return e.Blur()
 }
 
 func (e Node) InsertText(value string) error {
@@ -247,12 +250,16 @@ func (e Node) setText(value string, clearBefore bool) (err error) {
 			return err
 		}
 	}
-	if err = NewKeyboard(e).Insert(value); err != nil {
+	kb := NewKeyboard(e)
+	if err = kb.Insert(value); err != nil {
 		return err
 	}
-	if err = e.dispatchInputChange(); err != nil {
-		return err
-	}
+	// if err = kb.Down(KeyDefinition{}); err != nil {
+	// 	return err
+	// }
+	// if err = e.dispatchInputChange(); err != nil {
+	// 	return err
+	// }
 	return nil
 }
 
