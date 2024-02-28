@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	documentElement       = "document.documentElement"
+	document              = "document"
 	truncateLongStringLen = 1024
 )
 
@@ -129,10 +129,10 @@ func safeSelector(v string) string {
 }
 
 func (f Frame) Document() Optional[*Node] {
-	value, err := f.evaluate(documentElement, true)
+	value, err := f.evaluate(document, true)
 	opt := optional[*Node](value, err)
 	if opt.err == nil && opt.value == nil {
-		opt.err = NoSuchSelectorError(documentElement)
+		opt.err = NoSuchSelectorError(document)
 	}
 	return opt
 }

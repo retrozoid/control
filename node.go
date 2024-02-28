@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"time"
 
+	"github.com/retrozoid/control/key"
 	"github.com/retrozoid/control/protocol/dom"
 	"github.com/retrozoid/control/protocol/overlay"
 	"github.com/retrozoid/control/protocol/page"
@@ -80,10 +82,69 @@ func (q Quad) Area() float64 {
 }
 
 func (e Node) Highlight() error {
-	if e.cssSelector != documentElement {
+	if e.cssSelector != document {
 		return overlay.HighlightNode(e.frame, overlay.HighlightNodeArgs{
 			HighlightConfig: &overlay.HighlightConfig{
-				ContentColor: &dom.RGBA{R: 255, G: 0, B: 255, A: 0.2},
+				GridHighlightConfig: &overlay.GridHighlightConfig{
+					RowGapColor:      &dom.RGBA{R: 127, G: 32, B: 210, A: 0.3},
+					RowHatchColor:    &dom.RGBA{R: 127, G: 32, B: 210, A: 0.8},
+					ColumnGapColor:   &dom.RGBA{R: 127, G: 32, B: 210, A: 0.3},
+					ColumnHatchColor: &dom.RGBA{R: 127, G: 32, B: 210, A: 0.8},
+					RowLineColor:     &dom.RGBA{R: 127, G: 32, B: 210},
+					ColumnLineColor:  &dom.RGBA{R: 127, G: 32, B: 210},
+					RowLineDash:      true,
+					ColumnLineDash:   true,
+				},
+				FlexContainerHighlightConfig: &overlay.FlexContainerHighlightConfig{
+					ContainerBorder: &overlay.LineStyle{
+						Color:   &dom.RGBA{R: 127, G: 32, B: 210},
+						Pattern: "dashed",
+					},
+					ItemSeparator: &overlay.LineStyle{
+						Color:   &dom.RGBA{R: 127, G: 32, B: 210},
+						Pattern: "dashed",
+					},
+					LineSeparator: &overlay.LineStyle{
+						Color:   &dom.RGBA{R: 127, G: 32, B: 210},
+						Pattern: "dashed",
+					},
+					MainDistributedSpace: &overlay.BoxStyle{
+						HatchColor: &dom.RGBA{R: 127, G: 32, B: 210, A: 0.8},
+						FillColor:  &dom.RGBA{R: 127, G: 32, B: 210, A: 0.3},
+					},
+					CrossDistributedSpace: &overlay.BoxStyle{
+						HatchColor: &dom.RGBA{R: 127, G: 32, B: 210, A: 0.8},
+						FillColor:  &dom.RGBA{R: 127, G: 32, B: 210, A: 0.3},
+					},
+					RowGapSpace: &overlay.BoxStyle{
+						HatchColor: &dom.RGBA{R: 127, G: 32, B: 210, A: 0.8},
+						FillColor:  &dom.RGBA{R: 127, G: 32, B: 210, A: 0.3},
+					},
+					ColumnGapSpace: &overlay.BoxStyle{
+						HatchColor: &dom.RGBA{R: 127, G: 32, B: 210, A: 0.8},
+						FillColor:  &dom.RGBA{R: 127, G: 32, B: 210, A: 0.3},
+					},
+				},
+				FlexItemHighlightConfig: &overlay.FlexItemHighlightConfig{
+					BaseSizeBox: &overlay.BoxStyle{
+						HatchColor: &dom.RGBA{R: 127, G: 32, B: 210, A: 0.8},
+					},
+					BaseSizeBorder: &overlay.LineStyle{
+						Color:   &dom.RGBA{R: 127, G: 32, B: 210},
+						Pattern: "dotted",
+					},
+					FlexibilityArrow: &overlay.LineStyle{
+						Color: &dom.RGBA{R: 127, G: 32, B: 210},
+					},
+				},
+				ContrastAlgorithm: overlay.ContrastAlgorithm("aa"),
+				ContentColor:      &dom.RGBA{R: 111, G: 168, B: 220, A: 0.66},
+				PaddingColor:      &dom.RGBA{R: 147, G: 196, B: 125, A: 0.55},
+				BorderColor:       &dom.RGBA{R: 255, G: 229, B: 153, A: 0.66},
+				MarginColor:       &dom.RGBA{R: 246, G: 178, B: 107, A: 0.66},
+				EventTargetColor:  &dom.RGBA{R: 255, G: 196, B: 196, A: 0.66},
+				ShapeColor:        &dom.RGBA{R: 96, G: 82, B: 177, A: 0.8},
+				ShapeMarginColor:  &dom.RGBA{R: 96, G: 82, B: 127, A: 0.6},
 			},
 			ObjectId: e.ObjectID(),
 		})
@@ -245,35 +306,15 @@ func (e Node) setText(value string, clearBefore bool) (err error) {
 	if err = e.Focus(); err != nil {
 		return err
 	}
+	kb := NewKeyboard(e)
 	if clearBefore {
-		if err = e.clearInput(); err != nil {
+		e.eval(`function(){return this.select()}`)
+		err = kb.Press(key.Keys[key.Backspace], time.Millisecond*41)
+		if err != nil {
 			return err
 		}
 	}
-	kb := NewKeyboard(e)
 	if err = kb.Insert(value); err != nil {
-		return err
-	}
-	// if err = kb.Down(KeyDefinition{}); err != nil {
-	// 	return err
-	// }
-	// if err = e.dispatchInputChange(); err != nil {
-	// 	return err
-	// }
-	return nil
-}
-
-func (e Node) Clear() (err error) {
-	defer func() {
-		e.log("ClearValue", "err", err)
-	}()
-	if err = e.Focus(); err != nil {
-		return err
-	}
-	if err = e.clearInput(); err != nil {
-		return err
-	}
-	if err = e.dispatchInputChange(); err != nil {
 		return err
 	}
 	return nil
