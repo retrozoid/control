@@ -17,8 +17,8 @@ import (
 type NoSuchSelectorError string
 
 var (
-	ErrElementNotClickable = errors.New("node is not clickable")
-	ErrNoPredicateMatch    = errors.New("no predicate match")
+	ErrTargetNotClickable = errors.New("target is not clickable")
+	ErrNoPredicateMatch   = errors.New("no predicate match")
 )
 
 func (s NoSuchSelectorError) Error() string {
@@ -308,7 +308,10 @@ func (e Node) setText(value string, clearBefore bool) (err error) {
 	}
 	kb := NewKeyboard(e)
 	if clearBefore {
-		e.eval(`function(){return this.select()}`)
+		err = e.clearInput()
+		if err != nil {
+			return err
+		}
 		err = kb.Press(key.Keys[key.Backspace], time.Millisecond*41)
 		if err != nil {
 			return err
@@ -364,6 +367,9 @@ func (e Node) click() (err error) {
 		// click can cause navigate with context lost
 		if err.Error() == `Cannot find context with specified id` {
 			return nil
+		}
+		if err.Error() == "" {
+			return ErrTargetNotClickable
 		}
 		return err
 	}
