@@ -32,8 +32,10 @@ func (b broker) run() {
 			value[subchan.channel] = subchan.sessionID
 
 		case channel := <-b.unsub:
-			delete(value, channel)
-			close(channel)
+			if _, ok := value[channel]; ok {
+				delete(value, channel)
+				close(channel)
+			}
 
 		case <-b.cancel:
 			for msgCh := range value {

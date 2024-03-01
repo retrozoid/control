@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -35,7 +34,7 @@ var (
 type TargetCrashedError []byte
 
 func (t TargetCrashedError) Error() string {
-	return fmt.Sprintf(string(t))
+	return string(t)
 }
 
 func mustUnmarshal[T any](u cdp.Message) T {
