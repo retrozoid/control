@@ -92,7 +92,7 @@ func Launch(ctx context.Context, userFlags ...string) (value Chrome, err error) 
 		flags = append(flags, userFlags...)
 	}
 	if os.Getuid() == 0 {
-		flags = append(flags, "--no-sandbox")
+		flags = append(flags, "--no-sandbox", "--disable-setuid-sandbox")
 	}
 	value.cmd = exec.CommandContext(ctx, bin(), flags...)
 	stderr, err := value.cmd.StderrPipe()
