@@ -228,15 +228,15 @@ func (e Node) QueryAll(cssSelector string) Optional[*NodeList] {
 	return opt
 }
 
-func (e Node) ToFrame() Optional[*Frame] {
+func (e Node) ContentFrame() Optional[*Frame] {
 	value, err := dom.DescribeNode(e, dom.DescribeNodeArgs{
 		ObjectId: e.ObjectID(),
 	})
 	if err != nil {
-		e.log("ToFrame", "err", err)
+		e.log("ContentFrame", "err", err)
 		return Optional[*Frame]{err: err}
 	}
-	e.log("ToFrame", "value", value.Node.FrameId, "err", err)
+	e.log("ContentFrame", "value", value.Node.FrameId, "err", err)
 	frame := &Frame{
 		id:          value.Node.FrameId,
 		session:     e.frame.session,
