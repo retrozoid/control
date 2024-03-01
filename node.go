@@ -229,20 +229,18 @@ func (e Node) QueryAll(cssSelector string) Optional[*NodeList] {
 }
 
 func (e Node) ContentFrame() Optional[*Frame] {
-	value, err := dom.DescribeNode(e, dom.DescribeNodeArgs{
-		ObjectId: e.ObjectID(),
-	})
+	value, err := e.frame.describeNode(e)
 	if err != nil {
 		e.log("ContentFrame", "err", err)
 		return Optional[*Frame]{err: err}
 	}
-	e.log("ContentFrame", "value", value.Node.FrameId, "err", err)
 	frame := &Frame{
-		id:          value.Node.FrameId,
+		id:          value.FrameId,
 		session:     e.frame.session,
 		cssSelector: e.cssSelector,
 	}
 	e.frame.descendant = frame
+	e.log("ContentFrame", "value", value.FrameId, "err", err)
 	return Optional[*Frame]{value: frame}
 }
 
@@ -280,14 +278,6 @@ func (e Node) Blur() error {
 func (e Node) clearInput() error {
 	_, err := e.eval(`function(){('INPUT'===this.nodeName||'TEXTAREA'===this.nodeName)?this.select():this.innerText=''}`)
 	return err
-}
-
-func (e Node) dispatchInputChange() error {
-	err := e.dispatchEvents("input", "change", "blur")
-	if err != nil {
-		return err
-	}
-	return e.Blur()
 }
 
 func (e Node) InsertText(value string) error {
