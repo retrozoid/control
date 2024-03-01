@@ -259,7 +259,7 @@ func (e Node) GetRawTextContent() Optional[string] {
 }
 
 func (e Node) GetText() Optional[string] {
-	value, err := e.eval(`function(){return this.innerText}`)
+	value, err := e.eval(`function(){return ('INPUT'===this.nodeName||'TEXTAREA'===this.nodeName)?this.value:this.innerText}`)
 	e.log("GetText", "content", value, "err", err)
 	return optional[string](value, err)
 }
@@ -278,7 +278,7 @@ func (e Node) Blur() error {
 }
 
 func (e Node) clearInput() error {
-	_, err := e.eval(`function(){('INPUT'===this.nodeName||'TEXTAREA'===this.nodeName)?this.value='':this.innerText=''}`)
+	_, err := e.eval(`function(){('INPUT'===this.nodeName||'TEXTAREA'===this.nodeName)?this.select():this.innerText=''}`)
 	return err
 }
 
