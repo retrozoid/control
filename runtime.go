@@ -190,16 +190,11 @@ func (f Frame) AwaitPromise(promise JsObject) (any, error) {
 }
 
 func (f Frame) callFunctionOn(self JsObject, function string, awaitPromise bool, args ...any) (any, error) {
-	var uid = f.executionContextID()
-	if uid == "" {
-		return nil, ErrExecutionContextDestroyed
-	}
 	value, err := runtime.CallFunctionOn(f, runtime.CallFunctionOnArgs{
 		FunctionDeclaration: function,
 		ObjectId:            self.ObjectID(),
 		AwaitPromise:        awaitPromise,
 		Arguments:           f.toCallArgument(args...),
-		UniqueContextId:     uid,
 		SerializationOptions: &runtime.SerializationOptions{
 			Serialization: "deep",
 		},
