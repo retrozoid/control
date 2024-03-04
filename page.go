@@ -26,7 +26,7 @@ type Frame struct {
 	session     *Session
 	id          common.FrameId
 	cssSelector string
-	descendant  *Frame
+	parent      *Frame
 }
 
 func (f Frame) GetSession() *Session {
@@ -46,6 +46,10 @@ func (f Frame) Call(method string, send, recv any) error {
 
 func (f *Frame) OwnFrame() *Frame {
 	return f
+}
+
+func (f *Frame) Parent() *Frame {
+	return f.parent
 }
 
 func (f Frame) Log(level slog.Level, msg string, args ...any) {

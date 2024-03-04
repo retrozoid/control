@@ -233,8 +233,8 @@ func (e Node) ContentFrame() Optional[*Frame] {
 		id:          value.FrameId,
 		session:     e.frame.session,
 		cssSelector: e.cssSelector,
+		parent:      e.frame,
 	}
-	e.frame.descendant = frame
 	e.log("ContentFrame", "value", value.FrameId, "err", err)
 	return Optional[*Frame]{value: frame}
 }
