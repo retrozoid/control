@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 type Chrome struct {
@@ -94,22 +96,42 @@ func Launch(ctx context.Context, userFlags ...string) (value Chrome, err error) 
 	if os.Getuid() == 0 {
 		flags = append(flags, "--no-sandbox", "--disable-setuid-sandbox")
 	}
-	value.cmd = exec.CommandContext(ctx, bin(), flags...)
+	binary := bin()
+	log.Println(binary, strings.Join(flags, " "))
+	value.cmd = exec.CommandContext(ctx, binary, flags...)
+
 	stderr, err := value.cmd.StderrPipe()
 	if err != nil {
 		return value, err
 	}
-	defer func() {
-		_ = stderr.Close()
+	addr := make(chan string)
+	go func() {
+		const prefix = "DevTools listening on"
+		var scanner = bufio.NewScanner(stderr)
+		var skip = false
+		for scanner.Scan() {
+			line := scanner.Text()
+			if !skip {
+				if s := strings.TrimPrefix(line, prefix); s != line {
+					addr <- strings.TrimSpace(s)
+					skip = true
+				}
+			}
+			log.Println("chromium:", line)
+		}
+		close(addr)
 	}()
+
 	if err = value.cmd.Start(); err != nil {
 		return value, err
 	}
-	value.WebSocketUrl, err = addrFromStderr(stderr)
-	if err != nil {
-		return value, err
+
+	select {
+	case value.WebSocketUrl = <-addr:
+		return value, nil
+	case <-time.After(10 * time.Second):
+		return value, fmt.Errorf("chrome stopped too early")
 	}
-	return value, err
 }
 
 func addrFromStderr(rc io.Reader) (string, error) {
