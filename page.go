@@ -13,6 +13,7 @@ import (
 
 const (
 	truncateLongStringLen = 1024
+	document              = "document"
 )
 
 type Queryable interface {
@@ -33,7 +34,10 @@ func (f Frame) GetSession() *Session {
 }
 
 func (f Frame) executionContextID() string {
-	return f.session.frames.Get(f.id)
+	if value, ok := f.session.frames.Load(f.id); ok {
+		return value.(string)
+	}
+	return ""
 }
 
 func (f Frame) Call(method string, send, recv any) error {
@@ -127,30 +131,29 @@ func safeSelector(v string) string {
 	return v
 }
 
-func (f Frame) Query(cssSelector string) Optional[*Node] {
-	value, err := f.evaluate(`document.querySelector("`+safeSelector(cssSelector)+`")`, true)
+func (f Frame) Document() Optional[*Node] {
+	value, err := f.evaluate(document, true)
 	opt := optional[*Node](value, err)
 	if opt.err == nil && opt.value == nil {
-		opt.err = NoSuchSelectorError(cssSelector)
+		opt.err = NoSuchSelectorError(document)
 	}
-	if opt.value != nil {
-		if DebugHighlightEnabled {
-			_ = opt.value.Highlight()
-		}
-		opt.value.cssSelector = cssSelector
-	}
-	f.Log(slog.LevelInfo, "Query", "cssSelector", cssSelector, "err", opt.err)
 	return opt
 }
 
-func (f Frame) QueryAll(cssSelector string) Optional[*NodeList] {
-	value, err := f.evaluate(`document.querySelectorAll("`+safeSelector(cssSelector)+`")`, true)
-	opt := optional[*NodeList](value, err)
-	if opt.err == nil && opt.value == nil {
-		opt.err = NoSuchSelectorError(cssSelector)
+func (f Frame) Query(cssSelector string) Optional[*Node] {
+	doc, err := f.Document().Unwrap()
+	if err != nil {
+		return Optional[*Node]{err: err}
 	}
-	f.Log(slog.LevelInfo, "QueryAll", "cssSelector", cssSelector, "err", opt.err)
-	return opt
+	return doc.Query(cssSelector)
+}
+
+func (f Frame) QueryAll(cssSelector string) Optional[*NodeList] {
+	doc, err := f.Document().Unwrap()
+	if err != nil {
+		return Optional[*NodeList]{err: err}
+	}
+	return doc.QueryAll(cssSelector)
 }
 
 func (f Frame) Click(point Point) error {

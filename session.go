@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/retrozoid/control/cdp"
@@ -52,7 +53,7 @@ type Session struct {
 	transport *cdp.Transport
 	targetID  target.TargetID
 	sessionID string
-	frames    *syncFrames
+	frames    *sync.Map
 	Frame     *Frame
 }
 
@@ -121,7 +122,7 @@ func NewSession(transport *cdp.Transport, targetID target.TargetID) (*Session, e
 		transport: transport,
 		targetID:  targetID,
 		timeout:   60 * time.Second,
-		frames:    &syncFrames{value: make(map[common.FrameId]string)},
+		frames:    &sync.Map{},
 	}
 	session.Frame = &Frame{
 		session: session,
@@ -177,11 +178,11 @@ func (s *Session) handle(message cdp.Message) error {
 		executionContextCreated := mustUnmarshal[runtime.ExecutionContextCreated](message)
 		aux := executionContextCreated.Context.AuxData.(map[string]any)
 		frameID := aux["frameId"].(string)
-		s.frames.Set(common.FrameId(frameID), executionContextCreated.Context.UniqueId)
+		s.frames.Store(common.FrameId(frameID), executionContextCreated.Context.UniqueId)
 
 	case "Page.frameDetached":
 		frameDetached := mustUnmarshal[page.FrameDetached](message)
-		s.frames.Remove(frameDetached.FrameId)
+		s.frames.Delete(frameDetached.FrameId)
 
 	case "Target.detachedFromTarget":
 		detachedFromTarget := mustUnmarshal[target.DetachedFromTarget](message)
