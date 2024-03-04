@@ -12,7 +12,6 @@ import (
 )
 
 const (
-	document              = "document"
 	truncateLongStringLen = 1024
 )
 
@@ -128,29 +127,30 @@ func safeSelector(v string) string {
 	return v
 }
 
-func (f Frame) Document() Optional[*Node] {
-	value, err := f.evaluate(document, true)
+func (f Frame) Query(cssSelector string) Optional[*Node] {
+	value, err := f.evaluate(`document.querySelector("`+safeSelector(cssSelector)+`")`, true)
 	opt := optional[*Node](value, err)
 	if opt.err == nil && opt.value == nil {
-		opt.err = NoSuchSelectorError(document)
+		opt.err = NoSuchSelectorError(cssSelector)
 	}
+	if opt.value != nil {
+		if DebugHighlightEnabled {
+			_ = opt.value.Highlight()
+		}
+		opt.value.cssSelector = cssSelector
+	}
+	f.Log(slog.LevelInfo, "Query", "cssSelector", cssSelector, "err", opt.err)
 	return opt
 }
 
-func (f Frame) Query(cssSelector string) Optional[*Node] {
-	doc, err := f.Document().Unwrap()
-	if err != nil {
-		return Optional[*Node]{err: err}
-	}
-	return doc.Query(cssSelector)
-}
-
 func (f Frame) QueryAll(cssSelector string) Optional[*NodeList] {
-	doc := f.Document()
-	if doc.Err() != nil {
-		return Optional[*NodeList]{err: doc.err}
+	value, err := f.evaluate(`document.querySelectorAll("`+safeSelector(cssSelector)+`")`, true)
+	opt := optional[*NodeList](value, err)
+	if opt.err == nil && opt.value == nil {
+		opt.err = NoSuchSelectorError(cssSelector)
 	}
-	return doc.Value().QueryAll(cssSelector)
+	f.Log(slog.LevelInfo, "QueryAll", "cssSelector", cssSelector, "err", opt.err)
+	return opt
 }
 
 func (f Frame) Click(point Point) error {

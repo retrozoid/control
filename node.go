@@ -82,74 +82,71 @@ func (q Quad) Area() float64 {
 }
 
 func (e Node) Highlight() error {
-	if e.cssSelector != document {
-		return overlay.HighlightNode(e.frame, overlay.HighlightNodeArgs{
-			HighlightConfig: &overlay.HighlightConfig{
-				GridHighlightConfig: &overlay.GridHighlightConfig{
-					RowGapColor:      &dom.RGBA{R: 127, G: 32, B: 210, A: 0.3},
-					RowHatchColor:    &dom.RGBA{R: 127, G: 32, B: 210, A: 0.8},
-					ColumnGapColor:   &dom.RGBA{R: 127, G: 32, B: 210, A: 0.3},
-					ColumnHatchColor: &dom.RGBA{R: 127, G: 32, B: 210, A: 0.8},
-					RowLineColor:     &dom.RGBA{R: 127, G: 32, B: 210},
-					ColumnLineColor:  &dom.RGBA{R: 127, G: 32, B: 210},
-					RowLineDash:      true,
-					ColumnLineDash:   true,
-				},
-				FlexContainerHighlightConfig: &overlay.FlexContainerHighlightConfig{
-					ContainerBorder: &overlay.LineStyle{
-						Color:   &dom.RGBA{R: 127, G: 32, B: 210},
-						Pattern: "dashed",
-					},
-					ItemSeparator: &overlay.LineStyle{
-						Color:   &dom.RGBA{R: 127, G: 32, B: 210},
-						Pattern: "dashed",
-					},
-					LineSeparator: &overlay.LineStyle{
-						Color:   &dom.RGBA{R: 127, G: 32, B: 210},
-						Pattern: "dashed",
-					},
-					MainDistributedSpace: &overlay.BoxStyle{
-						HatchColor: &dom.RGBA{R: 127, G: 32, B: 210, A: 0.8},
-						FillColor:  &dom.RGBA{R: 127, G: 32, B: 210, A: 0.3},
-					},
-					CrossDistributedSpace: &overlay.BoxStyle{
-						HatchColor: &dom.RGBA{R: 127, G: 32, B: 210, A: 0.8},
-						FillColor:  &dom.RGBA{R: 127, G: 32, B: 210, A: 0.3},
-					},
-					RowGapSpace: &overlay.BoxStyle{
-						HatchColor: &dom.RGBA{R: 127, G: 32, B: 210, A: 0.8},
-						FillColor:  &dom.RGBA{R: 127, G: 32, B: 210, A: 0.3},
-					},
-					ColumnGapSpace: &overlay.BoxStyle{
-						HatchColor: &dom.RGBA{R: 127, G: 32, B: 210, A: 0.8},
-						FillColor:  &dom.RGBA{R: 127, G: 32, B: 210, A: 0.3},
-					},
-				},
-				FlexItemHighlightConfig: &overlay.FlexItemHighlightConfig{
-					BaseSizeBox: &overlay.BoxStyle{
-						HatchColor: &dom.RGBA{R: 127, G: 32, B: 210, A: 0.8},
-					},
-					BaseSizeBorder: &overlay.LineStyle{
-						Color:   &dom.RGBA{R: 127, G: 32, B: 210},
-						Pattern: "dotted",
-					},
-					FlexibilityArrow: &overlay.LineStyle{
-						Color: &dom.RGBA{R: 127, G: 32, B: 210},
-					},
-				},
-				ContrastAlgorithm: overlay.ContrastAlgorithm("aa"),
-				ContentColor:      &dom.RGBA{R: 111, G: 168, B: 220, A: 0.66},
-				PaddingColor:      &dom.RGBA{R: 147, G: 196, B: 125, A: 0.55},
-				BorderColor:       &dom.RGBA{R: 255, G: 229, B: 153, A: 0.66},
-				MarginColor:       &dom.RGBA{R: 246, G: 178, B: 107, A: 0.66},
-				EventTargetColor:  &dom.RGBA{R: 255, G: 196, B: 196, A: 0.66},
-				ShapeColor:        &dom.RGBA{R: 96, G: 82, B: 177, A: 0.8},
-				ShapeMarginColor:  &dom.RGBA{R: 96, G: 82, B: 127, A: 0.6},
+	return overlay.HighlightNode(e.frame, overlay.HighlightNodeArgs{
+		HighlightConfig: &overlay.HighlightConfig{
+			GridHighlightConfig: &overlay.GridHighlightConfig{
+				RowGapColor:      &dom.RGBA{R: 127, G: 32, B: 210, A: 0.3},
+				RowHatchColor:    &dom.RGBA{R: 127, G: 32, B: 210, A: 0.8},
+				ColumnGapColor:   &dom.RGBA{R: 127, G: 32, B: 210, A: 0.3},
+				ColumnHatchColor: &dom.RGBA{R: 127, G: 32, B: 210, A: 0.8},
+				RowLineColor:     &dom.RGBA{R: 127, G: 32, B: 210},
+				ColumnLineColor:  &dom.RGBA{R: 127, G: 32, B: 210},
+				RowLineDash:      true,
+				ColumnLineDash:   true,
 			},
-			ObjectId: e.ObjectID(),
-		})
-	}
-	return nil
+			FlexContainerHighlightConfig: &overlay.FlexContainerHighlightConfig{
+				ContainerBorder: &overlay.LineStyle{
+					Color:   &dom.RGBA{R: 127, G: 32, B: 210},
+					Pattern: "dashed",
+				},
+				ItemSeparator: &overlay.LineStyle{
+					Color:   &dom.RGBA{R: 127, G: 32, B: 210},
+					Pattern: "dashed",
+				},
+				LineSeparator: &overlay.LineStyle{
+					Color:   &dom.RGBA{R: 127, G: 32, B: 210},
+					Pattern: "dashed",
+				},
+				MainDistributedSpace: &overlay.BoxStyle{
+					HatchColor: &dom.RGBA{R: 127, G: 32, B: 210, A: 0.8},
+					FillColor:  &dom.RGBA{R: 127, G: 32, B: 210, A: 0.3},
+				},
+				CrossDistributedSpace: &overlay.BoxStyle{
+					HatchColor: &dom.RGBA{R: 127, G: 32, B: 210, A: 0.8},
+					FillColor:  &dom.RGBA{R: 127, G: 32, B: 210, A: 0.3},
+				},
+				RowGapSpace: &overlay.BoxStyle{
+					HatchColor: &dom.RGBA{R: 127, G: 32, B: 210, A: 0.8},
+					FillColor:  &dom.RGBA{R: 127, G: 32, B: 210, A: 0.3},
+				},
+				ColumnGapSpace: &overlay.BoxStyle{
+					HatchColor: &dom.RGBA{R: 127, G: 32, B: 210, A: 0.8},
+					FillColor:  &dom.RGBA{R: 127, G: 32, B: 210, A: 0.3},
+				},
+			},
+			FlexItemHighlightConfig: &overlay.FlexItemHighlightConfig{
+				BaseSizeBox: &overlay.BoxStyle{
+					HatchColor: &dom.RGBA{R: 127, G: 32, B: 210, A: 0.8},
+				},
+				BaseSizeBorder: &overlay.LineStyle{
+					Color:   &dom.RGBA{R: 127, G: 32, B: 210},
+					Pattern: "dotted",
+				},
+				FlexibilityArrow: &overlay.LineStyle{
+					Color: &dom.RGBA{R: 127, G: 32, B: 210},
+				},
+			},
+			ContrastAlgorithm: overlay.ContrastAlgorithm("aa"),
+			ContentColor:      &dom.RGBA{R: 111, G: 168, B: 220, A: 0.66},
+			PaddingColor:      &dom.RGBA{R: 147, G: 196, B: 125, A: 0.55},
+			BorderColor:       &dom.RGBA{R: 255, G: 229, B: 153, A: 0.66},
+			MarginColor:       &dom.RGBA{R: 246, G: 178, B: 107, A: 0.66},
+			EventTargetColor:  &dom.RGBA{R: 255, G: 196, B: 196, A: 0.66},
+			ShapeColor:        &dom.RGBA{R: 96, G: 82, B: 177, A: 0.8},
+			ShapeMarginColor:  &dom.RGBA{R: 96, G: 82, B: 127, A: 0.6},
+		},
+		ObjectId: e.ObjectID(),
+	})
 }
 
 func (e Node) ObjectID() runtime.RemoteObjectId {
@@ -201,8 +198,7 @@ func (e Node) CallFunctionOn(function string, args ...any) Optional[any] {
 }
 
 func (e Node) Query(cssSelector string) Optional[*Node] {
-	cssSelector = safeSelector(cssSelector)
-	value, err := e.eval(`function(s){return this.querySelector(s)}`, cssSelector)
+	value, err := e.eval(`function(s){return this.querySelector(s)}`, safeSelector(cssSelector))
 	opt := optional[*Node](value, err)
 	if opt.err == nil && opt.value == nil {
 		opt.err = NoSuchSelectorError(cssSelector)
@@ -218,8 +214,7 @@ func (e Node) Query(cssSelector string) Optional[*Node] {
 }
 
 func (e Node) QueryAll(cssSelector string) Optional[*NodeList] {
-	cssSelector = safeSelector(cssSelector)
-	value, err := e.eval(`function(s){return this.querySelectorAll(s)}`, cssSelector)
+	value, err := e.eval(`function(s){return this.querySelectorAll(s)}`, safeSelector(cssSelector))
 	opt := optional[*NodeList](value, err)
 	if opt.err == nil && opt.value == nil {
 		opt.err = NoSuchSelectorError(cssSelector)
