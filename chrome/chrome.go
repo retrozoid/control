@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -15,9 +14,13 @@ import (
 	"time"
 )
 
+var MaxTimeToStart = 10 * time.Second
+
 type Chrome struct {
 	WebSocketUrl string
 	UserDataDir  string
+	LogFile      string
+	StartArgs    string
 	cmd          *exec.Cmd
 }
 
@@ -97,15 +100,22 @@ func Launch(ctx context.Context, userFlags ...string) (value Chrome, err error) 
 		flags = append(flags, "--no-sandbox", "--disable-setuid-sandbox")
 	}
 	binary := bin()
-	log.Println(binary, strings.Join(flags, " "))
+	value.StartArgs = fmt.Sprint(binary, strings.Join(flags, " "))
 	value.cmd = exec.CommandContext(ctx, binary, flags...)
 
 	stderr, err := value.cmd.StderrPipe()
 	if err != nil {
 		return value, err
 	}
+	chromeStderr, err := os.CreateTemp(value.UserDataDir, "*.log")
+	if err != nil {
+		return value, err
+	}
+	value.LogFile = chromeStderr.Name()
+
 	addr := make(chan string)
 	go func() {
+		defer chromeStderr.Close()
 		const prefix = "DevTools listening on"
 		var scanner = bufio.NewScanner(stderr)
 		var skip = false
@@ -117,9 +127,8 @@ func Launch(ctx context.Context, userFlags ...string) (value Chrome, err error) 
 					skip = true
 				}
 			}
-			log.Println("chromium:", line)
+			_, _ = chromeStderr.WriteString(line)
 		}
-		close(addr)
 	}()
 
 	if err = value.cmd.Start(); err != nil {
@@ -129,31 +138,7 @@ func Launch(ctx context.Context, userFlags ...string) (value Chrome, err error) 
 	select {
 	case value.WebSocketUrl = <-addr:
 		return value, nil
-	case <-time.After(10 * time.Second):
-		return value, fmt.Errorf("chrome stopped too early")
+	case <-time.After(MaxTimeToStart):
+		return value, fmt.Errorf("chrome stopped too early, please see the log %s", chromeStderr.Name())
 	}
-}
-
-func addrFromStderr(rc io.Reader) (string, error) {
-	const prefix = "DevTools listening on"
-	var (
-		addr    = ""
-		scanner = bufio.NewScanner(rc)
-		lines   []string
-	)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if s := strings.TrimPrefix(line, prefix); s != line {
-			addr = strings.TrimSpace(s)
-			break
-		}
-		lines = append(lines, line)
-	}
-	if err := scanner.Err(); err != nil {
-		return "", err
-	}
-	if addr == "" {
-		return "", fmt.Errorf("chrome stopped too early; stderr:\n%s", strings.Join(lines, "\n"))
-	}
-	return addr, nil
 }
