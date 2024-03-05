@@ -129,12 +129,6 @@ func (f Frame) Evaluate(expression string, awaitPromise bool) Optional[any] {
 	return Optional[any]{value: value, err: err}
 }
 
-func safeSelector(v string) string {
-	v = strings.TrimSpace(v)
-	v = strings.ReplaceAll(v, `"`, `\"`)
-	return v
-}
-
 func (f Frame) Document() Optional[*Node] {
 	value, err := f.evaluate(document, true)
 	opt := optional[*Node](value, err)

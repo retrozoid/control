@@ -18,6 +18,8 @@ type NoSuchSelectorError string
 
 var (
 	ErrTargetNotClickable = errors.New("target is not clickable")
+	ErrTargetNotVisible   = errors.New("target is not visible")
+	ErrTargetNotStable    = errors.New("target is not stable")
 	ErrNoPredicateMatch   = errors.New("no predicate match")
 )
 
@@ -41,6 +43,10 @@ type Point struct {
 }
 
 type Quad []Point
+
+func (p Point) Equal(a Point) bool {
+	return p.X == a.X && p.Y == a.Y
+}
 
 func convertQuads(dq []dom.Quad) []Quad {
 	var p = make([]Quad, len(dq))
@@ -198,7 +204,7 @@ func (e Node) CallFunctionOn(function string, args ...any) Optional[any] {
 }
 
 func (e Node) Query(cssSelector string) Optional[*Node] {
-	value, err := e.eval(`function(s){return this.querySelector(s)}`, safeSelector(cssSelector))
+	value, err := e.eval(`function(s){return this.querySelector(s)}`, cssSelector)
 	opt := optional[*Node](value, err)
 	if opt.err == nil && opt.value == nil {
 		opt.err = NoSuchSelectorError(cssSelector)
@@ -214,7 +220,7 @@ func (e Node) Query(cssSelector string) Optional[*Node] {
 }
 
 func (e Node) QueryAll(cssSelector string) Optional[*NodeList] {
-	value, err := e.eval(`function(s){return this.querySelectorAll(s)}`, safeSelector(cssSelector))
+	value, err := e.eval(`function(s){return this.querySelectorAll(s)}`, cssSelector)
 	opt := optional[*NodeList](value, err)
 	if opt.err == nil && opt.value == nil {
 		opt.err = NoSuchSelectorError(cssSelector)
@@ -340,7 +346,7 @@ func (e Node) click() (err error) {
 	if err != nil {
 		return err
 	}
-	onClick, err := e.asyncEval(`function(d){return new Promise((e,j)=>{let t=i=>{this.removeEventListener('click',t),e(i)};this.addEventListener('click',t,{capture:!0});setTimeout(j,d);})}`, 500)
+	onClick, err := e.asyncEval(`function(d){return new Promise((e,j)=>{let t=i=>{this.removeEventListener('click',t),e(i)};this.addEventListener('click',t,{capture:!0});setTimeout(j,d);})}`, 1000)
 	if err != nil {
 		return errors.Join(err, errors.New("addEventListener for click failed"))
 	}
@@ -362,11 +368,29 @@ func (e Node) click() (err error) {
 }
 
 func (e Node) ClickablePoint() Optional[Point] {
-	r, err := e.getContentQuad(true)
+	if !e.Visibility() {
+		return Optional[Point]{err: ErrTargetNotVisible}
+	}
+	var (
+		r0, r1 Quad
+		err    error
+	)
+	r0, err = e.getContentQuad(true)
 	if err != nil {
 		return Optional[Point]{err: err}
 	}
-	return Optional[Point]{value: r.Middle()}
+	_, err = e.frame.evaluate(`new Promise(requestAnimationFrame)`, true)
+	if err != nil {
+		return Optional[Point]{err: err}
+	}
+	r1, err = e.getContentQuad(true)
+	if err != nil {
+		return Optional[Point]{err: err}
+	}
+	if r0.Middle().Equal(r1.Middle()) {
+		return Optional[Point]{value: r0.Middle()}
+	}
+	return Optional[Point]{err: ErrTargetNotStable}
 }
 
 func (e Node) Clip() Optional[page.Viewport] {
