@@ -349,7 +349,7 @@ func (e Node) click() (err error) {
 	if err != nil {
 		return err
 	}
-	// onClick, err := e.asyncEval(`function(d){return new Promise((e,j)=>{let t=i=>{this.removeEventListener('click',t),e(i)};this.addEventListener('click',t,{capture:!0});setTimeout(j,d);})}`, 1000)
+	onClick, err := e.asyncEval(`function(d){let self=this;return new Promise((e,j)=>{let t=i=>e(i);self.addEventListener('click',t,{capture:true,once:true});setTimeout(()=>j('timeout'),d);})}`, 1000)
 	/*
 		function(d) {
 			let t = this
@@ -378,7 +378,7 @@ func (e Node) click() (err error) {
 			})
 		}
 	*/
-	onClick, err := e.asyncEval(`function(e){let t=this;return new Promise(((r,n)=>{let o={capture:!0,once:!1},i=e=>{e.isTrusted&&(e=>{for(let r=e;r;r=r.parentNode)if(r===t)return!0;return!1})(e.target)?(r(),document.removeEventListener("click",i,o)):(e.stopPropagation(),e.preventDefault(),n((n.target.outerHTML||"").substring(0,256)))};document.addEventListener("click",i,o),setTimeout(n,e)}))}`, 1000)
+	// onClick, err := e.asyncEval(`function(e){let t=this;return new Promise(((r,n)=>{let o={capture:!0,once:!1},i=e=>{e.isTrusted&&(e=>{for(let r=e;r;r=r.parentNode)if(r===t)return!0;return!1})(e.target)?(r(),document.removeEventListener("click",i,o)):(e.stopPropagation(),e.preventDefault(),n((n.target.outerHTML||"").substring(0,256)))};document.addEventListener("click",i,o),setTimeout(n,e)}))}`, 1000)
 	if err != nil {
 		return errors.Join(err, errors.New("addEventListener for click failed"))
 	}
@@ -391,7 +391,7 @@ func (e Node) click() (err error) {
 		// click can cause navigate with context lost
 		case `Cannot find context with specified id`:
 			return nil
-		case "":
+		case `timeout`:
 			return ErrTargetNotClickable
 		default:
 			return TargetOverlappedError(err.Error())

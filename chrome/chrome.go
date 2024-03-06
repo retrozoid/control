@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -60,6 +61,12 @@ func (c Chrome) NewTab(cli *http.Client, address string) (target Target, err err
 }
 
 func (c Chrome) WaitCloseGracefully() error {
+	defer func() {
+		err := os.RemoveAll(c.UserDataDir)
+		if err != nil {
+			log.Println(err)
+		}
+	}()
 	return c.cmd.Wait()
 }
 
@@ -108,11 +115,13 @@ func Launch(ctx context.Context, userFlags ...string) (value Chrome, err error) 
 	}
 
 	addr := make(chan string)
+	var std []string
 	go func() {
 		const prefix = "DevTools listening on"
 		var scanner = bufio.NewScanner(stderr)
 		for scanner.Scan() {
 			line := scanner.Text()
+			std = append(std, line)
 			if s := strings.TrimPrefix(line, prefix); s != line {
 				addr <- strings.TrimSpace(s)
 				return
@@ -128,6 +137,6 @@ func Launch(ctx context.Context, userFlags ...string) (value Chrome, err error) 
 	case value.WebSocketUrl = <-addr:
 		return value, nil
 	case <-time.After(MaxTimeToStart):
-		return value, fmt.Errorf("chrome stopped too early, please see the log")
+		return value, fmt.Errorf("chrome stopped too early %s", strings.Join(std, "\n"))
 	}
 }
