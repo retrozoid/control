@@ -394,7 +394,7 @@ func (e Node) click() (err error) {
 		case `timeout`:
 			return ErrTargetNotClickable
 		default:
-			return TargetOverlappedError(err.Error())
+			return err
 		}
 	}
 	return err

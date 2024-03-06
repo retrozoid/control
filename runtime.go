@@ -10,10 +10,16 @@ import (
 
 var ErrExecutionContextDestroyed = errors.New("execution context destroyed")
 
-type DOMException string
+type DOMException struct {
+	Description string
+	Exception   *runtime.ExceptionDetails
+}
 
 func (e DOMException) Error() string {
-	return string(e)
+	if e.Description != "" {
+		return e.Description
+	}
+	return fmt.Sprint(e.Exception)
 }
 
 type nodeType float64
@@ -237,7 +243,10 @@ func (f Frame) describeNode(self JsObject) (*dom.Node, error) {
 
 func toDOMException(value *runtime.ExceptionDetails) error {
 	if value != nil && value.Exception != nil {
-		return DOMException(value.Exception.Description)
+		return DOMException{
+			Description: value.Exception.Description,
+			Exception:   value,
+		}
 	}
 	return nil
 }
