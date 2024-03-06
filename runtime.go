@@ -19,9 +19,6 @@ func (e DOMException) Error() string {
 	if e.ExceptionDetails.Exception.Description != "" {
 		return e.ExceptionDetails.Exception.Description
 	}
-	if e.ExceptionDetails.Text != "" {
-		return e.ExceptionDetails.Text
-	}
 	b, _ := json.Marshal(e.ExceptionDetails)
 	return string(b)
 }

@@ -354,7 +354,8 @@ func (e Node) click() (err error) {
 	if err != nil {
 		return err
 	}
-	clickPromise, err := e.asyncEval(`function(d){let self=this;return new Promise((e,j)=>{let t=i=>e(i);self.addEventListener('click',t,{capture:true,once:true});setTimeout(j,d);})}`, e.frame.session.timeout.Milliseconds())
+	clickPromise, err := e.asyncEval(`function(d){let self=this;return new Promise((e,j)=>{let t=i=>e(i);self.addEventListener('click',t,{capture:true,once:true});setTimeout(j,d);})}`, 5000)
+	// clickPromise, err := e.asyncEval(`function(t){let e=this,r={capture:!0,once:!0};return new Promise(((n,o)=>{document.addEventListener("click",(t=>{for(let r=t.target;r;r=r.parentNode)if(r===e)return void n(r.outerHTML);t.stopPropagation(),t.preventDefault(),o((t.target.outerHTML||"").substring(0,256))}),r),setTimeout(o,t)}))}`, e.frame.session.timeout.Milliseconds())
 	if err != nil {
 		return errors.Join(err, errors.New("addEventListener for click failed"))
 	}
@@ -367,8 +368,8 @@ func (e Node) click() (err error) {
 		// click can cause navigate with context lost
 		case `Cannot find context with specified id`:
 			return nil
-		case `Uncaught (in promise)`:
-			return ErrTargetNotClickable
+		// case `Uncaught (in promise)`:
+		// return ErrTargetNotClickable
 		default:
 			return err
 		}
