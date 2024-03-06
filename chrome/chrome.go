@@ -19,7 +19,6 @@ var MaxTimeToStart = 10 * time.Second
 type Chrome struct {
 	WebSocketUrl string
 	UserDataDir  string
-	LogFile      string
 	StartArgs    string
 	cmd          *exec.Cmd
 }
@@ -107,27 +106,17 @@ func Launch(ctx context.Context, userFlags ...string) (value Chrome, err error) 
 	if err != nil {
 		return value, err
 	}
-	chromeStderr, err := os.CreateTemp(value.UserDataDir, "*.log")
-	if err != nil {
-		return value, err
-	}
-	value.LogFile = chromeStderr.Name()
 
 	addr := make(chan string)
 	go func() {
-		defer chromeStderr.Close()
 		const prefix = "DevTools listening on"
 		var scanner = bufio.NewScanner(stderr)
-		var skip = false
 		for scanner.Scan() {
 			line := scanner.Text()
-			if !skip {
-				if s := strings.TrimPrefix(line, prefix); s != line {
-					addr <- strings.TrimSpace(s)
-					skip = true
-				}
+			if s := strings.TrimPrefix(line, prefix); s != line {
+				addr <- strings.TrimSpace(s)
+				return
 			}
-			_, _ = chromeStderr.WriteString(line)
 		}
 	}()
 
@@ -139,6 +128,6 @@ func Launch(ctx context.Context, userFlags ...string) (value Chrome, err error) 
 	case value.WebSocketUrl = <-addr:
 		return value, nil
 	case <-time.After(MaxTimeToStart):
-		return value, fmt.Errorf("chrome stopped too early, please see the log %s", chromeStderr.Name())
+		return value, fmt.Errorf("chrome stopped too early, please see the log")
 	}
 }
