@@ -1,6 +1,7 @@
 package control
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -11,15 +12,18 @@ import (
 var ErrExecutionContextDestroyed = errors.New("execution context destroyed")
 
 type DOMException struct {
-	Description string
-	Exception   *runtime.ExceptionDetails
+	ExceptionDetails *runtime.ExceptionDetails
 }
 
 func (e DOMException) Error() string {
-	if e.Description != "" {
-		return e.Description
+	if e.ExceptionDetails.Exception.Description != "" {
+		return e.ExceptionDetails.Exception.Description
 	}
-	return fmt.Sprint(e.Exception)
+	if e.ExceptionDetails.Text != "" {
+		return e.ExceptionDetails.Text
+	}
+	b, _ := json.Marshal(e.ExceptionDetails)
+	return string(b)
 }
 
 type nodeType float64
@@ -244,8 +248,7 @@ func (f Frame) describeNode(self JsObject) (*dom.Node, error) {
 func toDOMException(value *runtime.ExceptionDetails) error {
 	if value != nil && value.Exception != nil {
 		return DOMException{
-			Description: value.Exception.Description,
-			Exception:   value,
+			ExceptionDetails: value,
 		}
 	}
 	return nil

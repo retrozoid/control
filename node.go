@@ -317,13 +317,18 @@ func (e Node) setText(value string, clearBefore bool) (err error) {
 	return nil
 }
 
-func (e Node) Visibility() bool {
+func (e Node) checkVisibility() bool {
 	value, err := e.eval(`function(){return this.checkVisibility()}`)
-	e.log("Visibility", "value", value, "err", err)
 	if err != nil {
 		return false
 	}
 	return value.(bool)
+}
+
+func (e Node) Visibility() bool {
+	value := e.checkVisibility()
+	e.log("Visibility", "value", value)
+	return value
 }
 
 func (e Node) Upload(files ...string) error {
@@ -349,49 +354,20 @@ func (e Node) click() (err error) {
 	if err != nil {
 		return err
 	}
-	onClick, err := e.asyncEval(`function(d){let self=this;return new Promise((e,j)=>{let t=i=>e(i);self.addEventListener('click',t,{capture:true,once:true});setTimeout(()=>j('timeout'),d);})}`, 1000)
-	/*
-		function(d) {
-			let t = this
-			return new Promise((a, b) => {
-				let c = { capture: !0, once: !1 }
-				let g = (i) => {
-					for (let d = i; d; d = d.parentNode) {
-						if (d === t) {
-							return !0
-						}
-					}
-					return !1
-				}
-				let f = (e) => {
-					if (e.isTrusted && g(e.target)) {
-						a()
-						document.removeEventListener("click", f, c);
-					} else {
-						e.stopPropagation()
-						e.preventDefault()
-						b((b.target.outerHTML || "").substring(0, 256))
-					}
-				}
-				document.addEventListener("click", f, c);
-				setTimeout(b, d);
-			})
-		}
-	*/
-	// onClick, err := e.asyncEval(`function(e){let t=this;return new Promise(((r,n)=>{let o={capture:!0,once:!1},i=e=>{e.isTrusted&&(e=>{for(let r=e;r;r=r.parentNode)if(r===t)return!0;return!1})(e.target)?(r(),document.removeEventListener("click",i,o)):(e.stopPropagation(),e.preventDefault(),n((n.target.outerHTML||"").substring(0,256)))};document.addEventListener("click",i,o),setTimeout(n,e)}))}`, 1000)
+	clickPromise, err := e.asyncEval(`function(d){let self=this;return new Promise((e,j)=>{let t=i=>e(i);self.addEventListener('click',t,{capture:true,once:true});setTimeout(j,d);})}`, e.frame.session.timeout.Milliseconds())
 	if err != nil {
 		return errors.Join(err, errors.New("addEventListener for click failed"))
 	}
 	if err = e.frame.Click(point); err != nil {
 		return err
 	}
-	_, err = e.frame.AwaitPromise(onClick)
+	_, err = e.frame.AwaitPromise(clickPromise)
 	if err != nil {
 		switch err.Error() {
 		// click can cause navigate with context lost
 		case `Cannot find context with specified id`:
 			return nil
-		case `timeout`:
+		case `Uncaught (in promise)`:
 			return ErrTargetNotClickable
 		default:
 			return err
@@ -401,7 +377,7 @@ func (e Node) click() (err error) {
 }
 
 func (e Node) ClickablePoint() Optional[Point] {
-	if !e.Visibility() {
+	if !e.checkVisibility() {
 		return Optional[Point]{err: ErrTargetNotVisible}
 	}
 	var (

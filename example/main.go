@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 	"log/slog"
-	// "os"
 
 	"github.com/retrozoid/control"
 	"github.com/retrozoid/control/backoff"
@@ -36,4 +35,8 @@ func main() {
 	backoff.Exec(func() error {
 		return session.Frame.Query(`.pager__count-pages`).Value().Click()
 	})
+
+	p := session.Frame.Evaluate(`new Promise((a,b) => b('timeout'))`, false).Value().(control.JsObject)
+	a, b := session.Frame.AwaitPromise(p)
+	log.Println(a, b)
 }
