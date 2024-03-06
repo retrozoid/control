@@ -15,6 +15,7 @@ import (
 )
 
 type NoSuchSelectorError string
+type TargetOverlappedError string
 
 var (
 	ErrTargetNotClickable = errors.New("target is not clickable")
@@ -25,6 +26,10 @@ var (
 
 func (s NoSuchSelectorError) Error() string {
 	return fmt.Sprintf("no such selector found: `%s`", string(s))
+}
+
+func (s TargetOverlappedError) Error() string {
+	return fmt.Sprintf("target is overlapped by: `%s`", string(s))
 }
 
 type Node struct {
@@ -276,9 +281,12 @@ func (e Node) Blur() error {
 	return err
 }
 
-func (e Node) clearInput() error {
+func (e Node) clearInput(kb Keyboard) error {
 	_, err := e.eval(`function(){('INPUT'===this.nodeName||'TEXTAREA'===this.nodeName)?this.select():this.innerText=''}`)
-	return err
+	if err != nil {
+		return err
+	}
+	return kb.Press(key.Keys[key.Backspace], time.Millisecond*41)
 }
 
 func (e Node) InsertText(value string) error {
@@ -299,12 +307,7 @@ func (e Node) setText(value string, clearBefore bool) (err error) {
 	}
 	kb := NewKeyboard(e)
 	if clearBefore {
-		err = e.clearInput()
-		if err != nil {
-			return err
-		}
-		err = kb.Press(key.Keys[key.Backspace], time.Millisecond*41)
-		if err != nil {
+		if err = e.clearInput(kb); err != nil {
 			return err
 		}
 	}
@@ -346,7 +349,36 @@ func (e Node) click() (err error) {
 	if err != nil {
 		return err
 	}
-	onClick, err := e.asyncEval(`function(d){return new Promise((e,j)=>{let t=i=>{this.removeEventListener('click',t),e(i)};this.addEventListener('click',t,{capture:!0});setTimeout(j,d);})}`, 1000)
+	// onClick, err := e.asyncEval(`function(d){return new Promise((e,j)=>{let t=i=>{this.removeEventListener('click',t),e(i)};this.addEventListener('click',t,{capture:!0});setTimeout(j,d);})}`, 1000)
+	/*
+		function(d) {
+			let t = this
+			return new Promise((a, b) => {
+				let c = { capture: !0, once: !1 }
+				let g = (i) => {
+					for (let d = i; d; d = d.parentNode) {
+						if (d === t) {
+							return !0
+						}
+					}
+					return !1
+				}
+				let f = (e) => {
+					if (e.isTrusted && g(e.target)) {
+						a()
+						document.removeEventListener("click", f, c);
+					} else {
+						e.stopPropagation()
+						e.preventDefault()
+						b((b.target.outerHTML || "").substring(0, 256))
+					}
+				}
+				document.addEventListener("click", f, c);
+				setTimeout(b, d);
+			})
+		}
+	*/
+	onClick, err := e.asyncEval(`function(e){let t=this;return new Promise(((r,n)=>{let o={capture:!0,once:!1},i=e=>{e.isTrusted&&(e=>{for(let r=e;r;r=r.parentNode)if(r===t)return!0;return!1})(e.target)?(r(),document.removeEventListener("click",i,o)):(e.stopPropagation(),e.preventDefault(),n((n.target.outerHTML||"").substring(0,256)))};document.addEventListener("click",i,o),setTimeout(n,e)}))}`, 1000)
 	if err != nil {
 		return errors.Join(err, errors.New("addEventListener for click failed"))
 	}
@@ -355,14 +387,15 @@ func (e Node) click() (err error) {
 	}
 	_, err = e.frame.AwaitPromise(onClick)
 	if err != nil {
+		switch err.Error() {
 		// click can cause navigate with context lost
-		if err.Error() == `Cannot find context with specified id` {
+		case `Cannot find context with specified id`:
 			return nil
-		}
-		if err.Error() == "" {
+		case "":
 			return ErrTargetNotClickable
+		default:
+			return TargetOverlappedError(err.Error())
 		}
-		return err
 	}
 	return err
 }
