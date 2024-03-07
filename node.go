@@ -354,15 +354,42 @@ func (e Node) click() (err error) {
 	if err != nil {
 		return err
 	}
-	clickPromise, err := e.asyncEval(`function(d){let self=this;return new Promise((e,j)=>{let t=i=>e(i);self.addEventListener('click',t,{capture:true,once:true});setTimeout(j,d);})}`, 5000)
-	// clickPromise, err := e.asyncEval(`function(t){let e=this,r={capture:!0,once:!0};return new Promise(((n,o)=>{document.addEventListener("click",(t=>{for(let r=t.target;r;r=r.parentNode)if(r===e)return void n(r.outerHTML);t.stopPropagation(),t.preventDefault(),o((t.target.outerHTML||"").substring(0,256))}),r),setTimeout(o,t)}))}`, e.frame.session.timeout.Milliseconds())
+	// clickPromise, err := e.asyncEval(`function(d){let self=this;return new Promise((e,j)=>{let t=i=>e(i);self.addEventListener('click',t,{capture:true,once:true});setTimeout(j,d);})}`, 5000)
+	hitTarget, err := e.asyncEval(`function (d) {
+		let self = this;
+		return new Promise((resolve, reject) => {
+			let timer = setTimeout(reject, d, 'deadline reached');
+			let isTarget = e => {
+				if (e.isTrusted) {
+					for (let d = e.target; d; d = d.parentNode) {
+						if (d === self) {
+							return true
+						}
+					}
+				}
+				return false;
+			}
+			let t = (event) => {
+				clearTimeout(timer)
+				if (isTarget(event)) {
+					resolve(d);
+				} else {
+					event.stopPropagation()
+					event.preventDefault()
+					event.stopImmediatePropagation()
+					reject(event.target)
+				}
+			};
+			window.addEventListener("click", t, { capture: true, once: true, passive: false });
+		});
+	}`, 1000)
 	if err != nil {
 		return errors.Join(err, errors.New("addEventListener for click failed"))
 	}
 	if err = e.frame.Click(point); err != nil {
 		return err
 	}
-	_, err = e.frame.AwaitPromise(clickPromise)
+	_, err = e.frame.AwaitPromise(hitTarget)
 	if err != nil {
 		switch err.Error() {
 		// click can cause navigate with context lost
@@ -374,7 +401,7 @@ func (e Node) click() (err error) {
 			return err
 		}
 	}
-	return err
+	return nil
 }
 
 func (e Node) ClickablePoint() Optional[Point] {
