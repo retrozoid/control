@@ -1,17 +1,59 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"log/slog"
+	"time"
 
 	"github.com/retrozoid/control"
 	"github.com/retrozoid/control/backoff"
 )
 
+type Handler struct {
+	h slog.Handler
+}
+
+func (Handler) Enabled(c context.Context, l slog.Level) bool {
+	return l >= slog.LevelInfo
+}
+
+func (h Handler) Handle(c context.Context, r slog.Record) error {
+	buf := bytes.Buffer{}
+	buf.WriteString(r.Time.Format(time.TimeOnly))
+	buf.WriteByte(' ')
+	buf.WriteString(r.Level.String())
+	buf.WriteByte(' ')
+	buf.WriteString(r.Message)
+	buf.WriteByte(' ')
+	body := make(map[string]any, r.NumAttrs())
+	r.Attrs(func(a slog.Attr) bool {
+		body[a.Key] = a.Value.Any()
+		return true
+	})
+	enc := json.NewEncoder(&buf)
+	enc.SetIndent("", " ")
+	err := enc.Encode(body)
+	if err != nil {
+		return err
+	}
+	fmt.Print(buf.String())
+	return nil
+}
+
+func (h Handler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return h.h.WithAttrs(attrs)
+}
+
+func (h Handler) WithGroup(name string) slog.Handler {
+	return h.h.WithGroup(name)
+}
+
 func main() {
-	// sl := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
-	sl := slog.Default()
+	sl := slog.New(Handler{h: slog.Default().Handler()})
 	session, dfr, err := control.TakeWithContext(context.TODO(), sl, "--no-startup-window")
 	if err != nil {
 		panic(err)

@@ -67,6 +67,7 @@ func (s *Session) Log(level slog.Level, msg string, args ...any) {
 		switch a := args[n].(type) {
 		case error:
 			if a != nil {
+				args[n] = a.Error()
 				level = slog.LevelWarn
 			}
 		}

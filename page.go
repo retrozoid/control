@@ -135,6 +135,9 @@ func (f Frame) Document() Optional[*Node] {
 	if opt.err == nil && opt.value == nil {
 		opt.err = NoSuchSelectorError(document)
 	}
+	if opt.value != nil {
+		opt.value.cssSelector = document
+	}
 	return opt
 }
 

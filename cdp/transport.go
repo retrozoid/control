@@ -127,7 +127,7 @@ func (t *Transport) Send(request *Request) ResponseFuture {
 	t.seq++
 	t.pending[seq] = resolver
 	request.ID = seq
-	t.Log(slog.LevelDebug, "send ->", "message", request.String())
+	t.Log(slog.LevelDebug, "send ->", "request", request.String())
 	t.mutex.Unlock()
 
 	if err := t.conn.WriteJSON(request); err != nil {
@@ -144,7 +144,7 @@ func (t *Transport) read() error {
 	if err := t.conn.ReadJSON(&response); err != nil {
 		return err
 	}
-	t.Log(slog.LevelDebug, "recv <-", "message", response.String())
+	t.Log(slog.LevelDebug, "recv <-", "response", response.String())
 
 	if response.ID == 0 && response.Message != nil {
 		t.broker.Publish(*response.Message)
