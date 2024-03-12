@@ -358,7 +358,7 @@ func (e Node) click() (err error) {
 	hitTarget, err := e.asyncEval(`function (d) {
 		let self = this;
 		return new Promise((resolve, reject) => {
-			let timer = setTimeout(reject, d, 'deadline reached');
+			let timer = setTimeout(reject, d, 'deadline reached')
 			let isTarget = e => {
 				if (e.isTrusted) {
 					for (let d = e.target; d; d = d.parentNode) {
@@ -367,17 +367,17 @@ func (e Node) click() (err error) {
 						}
 					}
 				}
-				return false;
+				return false
 			}
 			let t = (event) => {
 				clearTimeout(timer)
 				if (isTarget(event)) {
-					resolve(d);
+					resolve()
 				} else {
 					event.stopPropagation()
 					event.preventDefault()
 					event.stopImmediatePropagation()
-					reject(event.target)
+					reject("misclicked")
 				}
 			};
 			window.addEventListener("click", t, { capture: true, once: true, passive: false });

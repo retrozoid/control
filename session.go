@@ -141,11 +141,9 @@ func NewSession(transport *cdp.Transport, targetID target.TargetID) (*Session, e
 	session.sessionID = string(val.SessionId)
 	channel, unsubscribe := session.Subscribe()
 	go func() {
-		for msg := range channel {
-			if err := session.handle(msg); err != nil {
-				unsubscribe()
-				cancel(err)
-			}
+		if err := session.handle(channel); err != nil {
+			unsubscribe()
+			cancel(err)
 		}
 	}()
 
@@ -172,38 +170,46 @@ func NewSession(transport *cdp.Transport, targetID target.TargetID) (*Session, e
 	return session, nil
 }
 
-func (s *Session) handle(message cdp.Message) error {
-	switch message.Method {
+func (s *Session) handle(channel chan cdp.Message) error {
+	for message := range channel {
+		switch message.Method {
 
-	case "Runtime.executionContextCreated":
-		executionContextCreated := mustUnmarshal[runtime.ExecutionContextCreated](message)
-		aux := executionContextCreated.Context.AuxData.(map[string]any)
-		frameID := aux["frameId"].(string)
-		s.frames.Store(common.FrameId(frameID), executionContextCreated.Context.UniqueId)
+		// case "Page.frameStartedLoading":
+		// 	frameStartedLoading := mustUnmarshal[page.FrameStartedLoading](message)
+		// 	frameStartedLoading.FrameId
 
-	case "Page.frameDetached":
-		frameDetached := mustUnmarshal[page.FrameDetached](message)
-		s.frames.Delete(frameDetached.FrameId)
+		// case "Page.frameStoppedLoading":
+		// 	frameStoppedLoading := mustUnmarshal[page.FrameStoppedLoading](message)
 
-	case "Target.detachedFromTarget":
-		detachedFromTarget := mustUnmarshal[target.DetachedFromTarget](message)
-		if s.sessionID == string(detachedFromTarget.SessionId) {
-			return ErrTargetDetached
-		}
+		case "Runtime.executionContextCreated":
+			executionContextCreated := mustUnmarshal[runtime.ExecutionContextCreated](message)
+			aux := executionContextCreated.Context.AuxData.(map[string]any)
+			frameID := aux["frameId"].(string)
+			s.frames.Store(common.FrameId(frameID), executionContextCreated.Context.UniqueId)
 
-	case "Target.targetDestroyed":
-		targetDestroyed := mustUnmarshal[target.TargetDestroyed](message)
-		if s.targetID == targetDestroyed.TargetId {
-			return ErrTargetDestroyed
-		}
+		case "Page.frameDetached":
+			frameDetached := mustUnmarshal[page.FrameDetached](message)
+			s.frames.Delete(frameDetached.FrameId)
 
-	case "Target.targetCrashed":
-		targetCrashed := mustUnmarshal[target.TargetCrashed](message)
-		if s.targetID == targetCrashed.TargetId {
-			return TargetCrashedError(message.Params)
+		case "Target.detachedFromTarget":
+			detachedFromTarget := mustUnmarshal[target.DetachedFromTarget](message)
+			if s.sessionID == string(detachedFromTarget.SessionId) {
+				return ErrTargetDetached
+			}
+
+		case "Target.targetDestroyed":
+			targetDestroyed := mustUnmarshal[target.TargetDestroyed](message)
+			if s.targetID == targetDestroyed.TargetId {
+				return ErrTargetDestroyed
+			}
+
+		case "Target.targetCrashed":
+			targetCrashed := mustUnmarshal[target.TargetCrashed](message)
+			if s.targetID == targetCrashed.TargetId {
+				return TargetCrashedError(message.Params)
+			}
 		}
 	}
-
 	return nil
 }
 
