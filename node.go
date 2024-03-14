@@ -19,9 +19,10 @@ type NoSuchSelectorError string
 type TargetOverlappedError string
 
 var (
-	ErrTargetNotClickable = errors.New("target is not clickable")
-	ErrTargetNotVisible   = errors.New("target is not visible")
-	ErrTargetNotStable    = errors.New("target is not stable")
+	ErrElementUnclickable = errors.New("element is not clickable")
+	ErrElementUnvisible   = errors.New("element is not visible")
+	ErrElementUnstable    = errors.New("element is not stable")
+	ErrElementDetached    = errors.New("element is detached")
 	ErrNoPredicateMatch   = errors.New("no predicate match")
 )
 
@@ -172,6 +173,14 @@ func (e Node) Call(method string, send, recv interface{}) error {
 	return e.frame.Call(method, send, recv)
 }
 
+func (e Node) IsConnected() bool {
+	value, err := e.eval(`function(){return this.isConnected}`)
+	if err != nil {
+		return false
+	}
+	return value.(bool)
+}
+
 func (e Node) eval(function string, args ...any) (any, error) {
 	return e.frame.callFunctionOn(e, function, true, args...)
 }
@@ -206,6 +215,12 @@ func (e Node) CallFunctionOn(function string, args ...any) Optional[any] {
 	value, err := e.eval(function, args...)
 	e.log("CallFunctionOn", "function", function, "args", args, "value", value, "err", err)
 	return optional[any](value, err)
+}
+
+func (e Node) AsyncCallFunctionOn(function string, args ...any) Optional[JsObject] {
+	value, err := e.asyncEval(function, args...)
+	e.log("AsyncCallFunctionOn", "function", function, "args", args, "value", value, "err", err)
+	return optional[JsObject](value, err)
 }
 
 func (e Node) Query(cssSelector string) Optional[*Node] {
@@ -256,12 +271,6 @@ func (e Node) ScrollIntoView() error {
 	})
 }
 
-func (e Node) GetRawTextContent() Optional[string] {
-	value, err := e.eval(`function(){return this.textContent.trim()}`)
-	e.log("GetRawTextContent", "content", value, "err", err)
-	return optional[string](value, err)
-}
-
 func (e Node) GetText() Optional[string] {
 	value, err := e.eval(`function(){return ('INPUT'===this.nodeName||'TEXTAREA'===this.nodeName)?this.value:this.innerText}`)
 	e.log("GetText", "content", value, "err", err)
@@ -269,11 +278,9 @@ func (e Node) GetText() Optional[string] {
 }
 
 func (e Node) Focus() error {
-	err := dom.Focus(e, dom.FocusArgs{
+	return dom.Focus(e, dom.FocusArgs{
 		ObjectId: e.ObjectID(),
 	})
-	e.log("Focus", "err", err)
-	return err
 }
 
 func (e Node) Blur() error {
@@ -286,7 +293,7 @@ func (e Node) clearInput(kb Keyboard) error {
 	if err != nil {
 		return err
 	}
-	return kb.Press(key.Keys[key.Backspace], time.Millisecond*41)
+	return kb.Press(key.Keys[key.Backspace], time.Millisecond*85)
 }
 
 func (e Node) InsertText(value string) error {
@@ -373,7 +380,7 @@ func (e Node) click(middle Middleware) (err error) {
 
 func (e Node) ClickablePoint() Optional[Point] {
 	if !e.checkVisibility() {
-		return Optional[Point]{err: ErrTargetNotVisible}
+		return Optional[Point]{err: ErrElementUnvisible}
 	}
 	var (
 		r0, r1 Quad
@@ -394,7 +401,7 @@ func (e Node) ClickablePoint() Optional[Point] {
 	if r0.Middle().Equal(r1.Middle()) {
 		return Optional[Point]{value: r0.Middle()}
 	}
-	return Optional[Point]{err: ErrTargetNotStable}
+	return Optional[Point]{err: ErrElementUnstable}
 }
 
 func (e Node) Clip() Optional[page.Viewport] {

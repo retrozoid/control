@@ -20,12 +20,11 @@ func (t *MdlMisclick) Prelude(n Node) (err error) {
 	t.JsObject, err = n.asyncEval(`function (d) {
 		let self = this;
 		return new Promise((resolve, reject) => {
-			let timer = setTimeout(reject, d, 'deadline reached')
+			let timer = setTimeout(() => self.isConnected ? reject('deadline reached') : resolve(), d)
 			let isTarget = e => {
 				if (e.isTrusted) {
 					for (let d = e.target; d; d = d.parentNode) {
 						if (d === self) {
-							console.log(e)
 							return true
 						}
 					}
