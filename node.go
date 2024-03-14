@@ -9,6 +9,7 @@ import (
 
 	"github.com/retrozoid/control/key"
 	"github.com/retrozoid/control/protocol/dom"
+	"github.com/retrozoid/control/protocol/domdebugger"
 	"github.com/retrozoid/control/protocol/overlay"
 	"github.com/retrozoid/control/protocol/page"
 	"github.com/retrozoid/control/protocol/runtime"
@@ -77,7 +78,6 @@ func (q Quad) Middle() Point {
 	return Point{X: x / 4, Y: y / 4}
 }
 
-// Area calc area of quad
 func (q Quad) Area() float64 {
 	var area float64
 	var x1, x2, y1, y2 float64
@@ -215,7 +215,7 @@ func (e Node) Query(cssSelector string) Optional[*Node] {
 		opt.err = NoSuchSelectorError(cssSelector)
 	}
 	if opt.value != nil {
-		if DebugHighlightEnabled {
+		if e.frame.session.highlightEnabled {
 			_ = opt.value.Highlight()
 		}
 		opt.value.cssSelector = cssSelector
@@ -341,12 +341,16 @@ func (e Node) Upload(files ...string) error {
 }
 
 func (e Node) Click() error {
-	err := e.click()
+	return e.ClickWithMiddleware(mdlMisclick)
+}
+
+func (e Node) ClickWithMiddleware(middle Middleware) error {
+	err := e.click(middle)
 	e.log("Click", "err", err)
 	return err
 }
 
-func (e Node) click() (err error) {
+func (e Node) click(middle Middleware) (err error) {
 	if err = e.ScrollIntoView(); err != nil {
 		return err
 	}
@@ -354,54 +358,13 @@ func (e Node) click() (err error) {
 	if err != nil {
 		return err
 	}
-	// clickPromise, err := e.asyncEval(`function(d){let self=this;return new Promise((e,j)=>{let t=i=>e(i);self.addEventListener('click',t,{capture:true,once:true});setTimeout(j,d);})}`, 5000)
-	hitTarget, err := e.asyncEval(`function (d) {
-		let self = this;
-		return new Promise((resolve, reject) => {
-			let timer = setTimeout(reject, d, 'deadline reached')
-			let isTarget = e => {
-				if (e.isTrusted) {
-					for (let d = e.target; d; d = d.parentNode) {
-						if (d === self) {
-							return true
-						}
-					}
-				}
-				return false
-			}
-			let t = (event) => {
-				clearTimeout(timer)
-				if (isTarget(event)) {
-					resolve()
-				} else {
-					event.stopPropagation()
-					event.preventDefault()
-					event.stopImmediatePropagation()
-					reject("misclicked")
-				}
-			};
-			window.addEventListener("click", t, { capture: true, once: true, passive: false });
-		});
-	}`, 1000)
-	if err != nil {
-		return errors.Join(err, errors.New("addEventListener for click failed"))
+	if err = middle.Prelude(e); err != nil {
+		return err
 	}
 	if err = e.frame.Click(point); err != nil {
 		return err
 	}
-	_, err = e.frame.AwaitPromise(hitTarget)
-	if err != nil {
-		switch err.Error() {
-		// click can cause navigate with context lost
-		case `Cannot find context with specified id`:
-			return nil
-		// case `Uncaught (in promise)`:
-		// return ErrTargetNotClickable
-		default:
-			return err
-		}
-	}
-	return nil
+	return middle.Postlude(e)
 }
 
 func (e Node) ClickablePoint() Optional[Point] {
@@ -588,6 +551,20 @@ func (e Node) IsChecked() Optional[bool] {
 	value, err := e.eval(`function(){return this.checked}`)
 	e.log("IsChecked", "value", value, "err", err)
 	return optional[bool](value, err)
+}
+
+func (e Node) GetEventListeners() ([]domdebugger.EventListener, error) {
+	value, err := domdebugger.GetEventListeners(e, domdebugger.GetEventListenersArgs{
+		ObjectId: e.ObjectID(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	var result []domdebugger.EventListener
+	for _, v := range value.Listeners {
+		result = append(result, *v)
+	}
+	return result, nil
 }
 
 func (nl NodeList) Map(mapFn func(*Node) (string, error)) ([]string, error) {

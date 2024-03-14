@@ -21,8 +21,7 @@ import (
 
 // The Longest post body size (in bytes) that would be included in requestWillBeSent notification
 var (
-	MaxPostDataSize       = 20 * 1024 // 20KB
-	DebugHighlightEnabled = true
+	MaxPostDataSize = 20 * 1024 // 20KB
 )
 
 const Blank = "about:blank"
@@ -48,13 +47,14 @@ func mustUnmarshal[T any](u cdp.Message) T {
 }
 
 type Session struct {
-	timeout   time.Duration
-	context   context.Context
-	transport *cdp.Transport
-	targetID  target.TargetID
-	sessionID string
-	frames    *sync.Map
-	Frame     *Frame
+	timeout          time.Duration
+	context          context.Context
+	transport        *cdp.Transport
+	targetID         target.TargetID
+	sessionID        string
+	frames           *sync.Map
+	Frame            *Frame
+	highlightEnabled bool
 }
 
 func (s *Session) Transport() *cdp.Transport {
@@ -162,12 +162,15 @@ func NewSession(transport *cdp.Transport, targetID target.TargetID) (*Session, e
 	if err = network.Enable(session, network.EnableArgs{MaxPostDataSize: MaxPostDataSize}); err != nil {
 		return nil, err
 	}
-	if DebugHighlightEnabled {
-		if err = overlay.Enable(session); err != nil {
-			return nil, err
-		}
-	}
 	return session, nil
+}
+
+func (s *Session) EnableHighlight() error {
+	if err := overlay.Enable(s); err != nil {
+		return err
+	}
+	s.highlightEnabled = true
+	return nil
 }
 
 func (s *Session) handle(channel chan cdp.Message) error {

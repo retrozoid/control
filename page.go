@@ -158,7 +158,7 @@ func (f Frame) QueryAll(cssSelector string) Optional[*NodeList] {
 }
 
 func (f Frame) Click(point Point) error {
-	return NewMouse(f).Click(MouseLeft, point, time.Millisecond*42)
+	return NewMouse(f).Click(MouseLeft, point, time.Millisecond*85)
 }
 
 func (f Frame) Hover(point Point) error {
