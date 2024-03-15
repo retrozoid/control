@@ -3,7 +3,6 @@ package control
 import (
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 	"time"
 
@@ -52,14 +51,15 @@ func (f *Frame) Parent() *Frame {
 	return f.parent
 }
 
-func (f Frame) Log(level slog.Level, msg string, args ...any) {
+func (f Frame) Log(t time.Time, msg string, args ...any) {
 	args = append(args, "frameId", f.id)
-	f.session.Log(level, msg, args...)
+	f.session.Log(t, msg, args...)
 }
 
 func (f Frame) Navigate(url string) error {
+	now := time.Now()
 	err := f.navigate(url)
-	f.Log(slog.LevelInfo, "Navigate", "url", url, "err", err)
+	f.Log(now, "Navigate", "url", url, "err", err)
 	return err
 }
 
@@ -88,8 +88,9 @@ func (f Frame) navigate(url string) error {
 }
 
 func (f Frame) Reload(ignoreCache bool, scriptToEvaluateOnLoad string) error {
+	now := time.Now()
 	err := f.reload(ignoreCache, scriptToEvaluateOnLoad)
-	f.Log(slog.LevelInfo, "Reload", "ignoreCache", ignoreCache, "scriptToEvaluateOnLoad", scriptToEvaluateOnLoad, "err", err)
+	f.Log(now, "Reload", "ignoreCache", ignoreCache, "scriptToEvaluateOnLoad", scriptToEvaluateOnLoad, "err", err)
 	return err
 }
 
@@ -124,8 +125,14 @@ func truncate(value string, length int) string {
 }
 
 func (f Frame) Evaluate(expression string, awaitPromise bool) Optional[any] {
+	now := time.Now()
 	value, err := f.evaluate(expression, awaitPromise)
-	f.Log(slog.LevelInfo, "Evaluate", "expression", truncate(expression, truncateLongStringLen), "awaitPromise", awaitPromise, "value", truncate(fmt.Sprint(value), truncateLongStringLen), "err", err)
+	f.Log(now, "Evaluate",
+		"expression", truncate(expression, truncateLongStringLen),
+		"awaitPromise", awaitPromise,
+		"value", truncate(fmt.Sprint(value), truncateLongStringLen),
+		"err", err,
+	)
 	return Optional[any]{value: value, err: err}
 }
 
@@ -158,11 +165,11 @@ func (f Frame) QueryAll(cssSelector string) Optional[*NodeList] {
 }
 
 func (f Frame) Click(point Point) error {
-	return NewMouse(f).Click(MouseLeft, point, time.Millisecond*85)
+	return f.session.mouse.Click(MouseLeft, point, time.Millisecond*85)
 }
 
 func (f Frame) Hover(point Point) error {
-	return NewMouse(f).Move(MouseNone, point)
+	return f.session.mouse.Move(MouseNone, point)
 }
 
 func (f Frame) GetLayout() Optional[page.GetLayoutMetricsVal] {
@@ -185,16 +192,28 @@ func (f Frame) GetNavigationEntry() Optional[page.NavigationEntry] {
 }
 
 func (f Frame) GetCurrentURL() Optional[string] {
+	now := time.Now()
+	opt := optional[string](f.getCurrentURL())
+	f.Log(now, "GetCurrentURL", "value", opt.value, "err", opt.err)
+	return opt
+}
+
+func (f Frame) getCurrentURL() (string, error) {
 	e, err := f.GetNavigationEntry().Unwrap()
 	if err != nil {
-		f.Log(slog.LevelInfo, "GetCurrentURL", "err", err)
-		return Optional[string]{err: err}
+		return "", err
 	}
-	f.Log(slog.LevelInfo, "GetCurrentURL", "value", e.Url, "err", err)
-	return Optional[string]{value: e.Url}
+	return e.Url, nil
 }
 
 func (f Frame) NavigateHistory(delta int) error {
+	now := time.Now()
+	err := f.navigateHistory(delta)
+	f.Log(now, "NavigateHistory", "delta", delta, "err", err)
+	return err
+}
+
+func (f Frame) navigateHistory(delta int) error {
 	val, err := page.GetNavigationHistory(f)
 	if err != nil {
 		return err

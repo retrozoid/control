@@ -55,14 +55,17 @@ type Session struct {
 	frames           *sync.Map
 	Frame            *Frame
 	highlightEnabled bool
+	mouse            Mouse
+	kb               Keyboard
 }
 
 func (s *Session) Transport() *cdp.Transport {
 	return s.transport
 }
 
-func (s *Session) Log(level slog.Level, msg string, args ...any) {
-	args = append(args, "sessionId", s.sessionID)
+func (s *Session) Log(t time.Time, msg string, args ...any) {
+	level := slog.LevelInfo
+	args = append(args, "sessionId", s.sessionID, "duration", time.Since(t).String())
 	for n := range args {
 		switch a := args[n].(type) {
 		case error:
@@ -125,6 +128,8 @@ func NewSession(transport *cdp.Transport, targetID target.TargetID) (*Session, e
 		timeout:   60 * time.Second,
 		frames:    &sync.Map{},
 	}
+	session.mouse = NewMouse(session)
+	session.kb = NewKeyboard(session)
 	session.Frame = &Frame{
 		session: session,
 		id:      common.FrameId(session.targetID),
@@ -176,13 +181,6 @@ func (s *Session) EnableHighlight() error {
 func (s *Session) handle(channel chan cdp.Message) error {
 	for message := range channel {
 		switch message.Method {
-
-		// case "Page.frameStartedLoading":
-		// 	frameStartedLoading := mustUnmarshal[page.FrameStartedLoading](message)
-		// 	frameStartedLoading.FrameId
-
-		// case "Page.frameStoppedLoading":
-		// 	frameStoppedLoading := mustUnmarshal[page.FrameStoppedLoading](message)
 
 		case "Runtime.executionContextCreated":
 			executionContextCreated := mustUnmarshal[runtime.ExecutionContextCreated](message)
