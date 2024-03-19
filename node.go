@@ -179,6 +179,10 @@ func (e Node) IsConnected() bool {
 	return value.(bool)
 }
 
+func (e Node) ReleaseObject() error {
+	return runtime.ReleaseObject(e, runtime.ReleaseObjectArgs{ObjectId: e.ObjectID()})
+}
+
 func (e Node) eval(function string, args ...any) (any, error) {
 	return e.frame.callFunctionOn(e, function, true, args...)
 }
