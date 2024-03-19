@@ -33,9 +33,9 @@ func (s TargetOverlappedError) Error() string {
 }
 
 type Node struct {
-	JsObject
-	cssSelector string
-	frame       *Frame
+	object            RemoteObject
+	requestedSelector string
+	frame             *Frame
 }
 
 type NodeList struct {
@@ -155,12 +155,12 @@ func (e Node) Highlight() error {
 			ShapeColor:        &dom.RGBA{R: 96, G: 82, B: 177, A: 0.8},
 			ShapeMarginColor:  &dom.RGBA{R: 96, G: 82, B: 127, A: 0.6},
 		},
-		ObjectId: e.ObjectID(),
+		ObjectId: e.GetRemoteObjectID(),
 	})
 }
 
-func (e Node) ObjectID() runtime.RemoteObjectId {
-	return e.JsObject.ObjectID()
+func (e Node) GetRemoteObjectID() runtime.RemoteObjectId {
+	return e.object.GetRemoteObjectID()
 }
 
 func (e Node) OwnFrame() *Frame {
@@ -180,19 +180,23 @@ func (e Node) IsConnected() bool {
 }
 
 func (e Node) ReleaseObject() error {
-	return runtime.ReleaseObject(e, runtime.ReleaseObjectArgs{ObjectId: e.ObjectID()})
+	err := runtime.ReleaseObject(e, runtime.ReleaseObjectArgs{ObjectId: e.GetRemoteObjectID()})
+	if err != nil && err.Error() == `Cannot find context with specified id` {
+		return nil
+	}
+	return err
 }
 
 func (e Node) eval(function string, args ...any) (any, error) {
 	return e.frame.callFunctionOn(e, function, true, args...)
 }
 
-func (e Node) asyncEval(function string, args ...any) (JsObject, error) {
+func (e Node) asyncEval(function string, args ...any) (RemoteObject, error) {
 	value, err := e.frame.callFunctionOn(e, function, false, args...)
 	if err != nil {
 		return nil, err
 	}
-	if v, ok := value.(JsObject); ok {
+	if v, ok := value.(RemoteObject); ok {
 		return v, nil
 	}
 	return nil, fmt.Errorf("interface conversion failed, `%+v` not JsObject", value)
@@ -204,7 +208,7 @@ func (e Node) dispatchEvents(events ...any) error {
 }
 
 func (e Node) log(t time.Time, msg string, args ...any) {
-	args = append(args, "self", e.cssSelector)
+	args = append(args, "self", e.requestedSelector)
 	e.frame.Log(t, msg, args...)
 }
 
@@ -222,11 +226,11 @@ func (e Node) CallFunctionOn(function string, args ...any) Optional[any] {
 	return optional[any](value, err)
 }
 
-func (e Node) AsyncCallFunctionOn(function string, args ...any) Optional[JsObject] {
+func (e Node) AsyncCallFunctionOn(function string, args ...any) Optional[RemoteObject] {
 	t := time.Now()
 	value, err := e.asyncEval(function, args...)
 	e.log(t, "AsyncCallFunctionOn", "function", function, "args", args, "value", value, "err", err)
-	return optional[JsObject](value, err)
+	return optional[RemoteObject](value, err)
 }
 
 func (e Node) Query(cssSelector string) Optional[*Node] {
@@ -240,7 +244,7 @@ func (e Node) Query(cssSelector string) Optional[*Node] {
 		if e.frame.session.highlightEnabled {
 			_ = opt.value.Highlight()
 		}
-		opt.value.cssSelector = cssSelector
+		opt.value.requestedSelector = cssSelector
 	}
 	e.log(t, "Query", "cssSelector", cssSelector, "err", opt.err)
 	return opt
@@ -269,18 +273,17 @@ func (e Node) contentFrame() (*Frame, error) {
 	if err != nil {
 		return nil, err
 	}
-	frame := &Frame{
+	return &Frame{
 		id:          value.FrameId,
 		session:     e.frame.session,
-		cssSelector: e.cssSelector,
+		cssSelector: e.requestedSelector,
 		parent:      e.frame,
-	}
-	return frame, nil
+	}, nil
 }
 
 func (e Node) ScrollIntoView() error {
 	return dom.ScrollIntoViewIfNeeded(e, dom.ScrollIntoViewIfNeededArgs{
-		ObjectId: e.ObjectID(),
+		ObjectId: e.GetRemoteObjectID(),
 	})
 }
 
@@ -293,7 +296,7 @@ func (e Node) GetText() Optional[string] {
 
 func (e Node) Focus() error {
 	return dom.Focus(e, dom.FocusArgs{
-		ObjectId: e.ObjectID(),
+		ObjectId: e.GetRemoteObjectID(),
 	})
 }
 
@@ -360,7 +363,7 @@ func (e Node) Visibility() bool {
 func (e Node) Upload(files ...string) error {
 	t := time.Now()
 	err := dom.SetFileInputFiles(e, dom.SetFileInputFilesArgs{
-		ObjectId: e.ObjectID(),
+		ObjectId: e.GetRemoteObjectID(),
 		Files:    files,
 	})
 	e.log(t, "Upload", "files", files, "err", err)
@@ -450,7 +453,7 @@ func (e Node) clip() (page.Viewport, error) {
 
 func (e Node) getContentQuad(viewportCorrection bool) (Quad, error) {
 	val, err := dom.GetContentQuads(e, dom.GetContentQuadsArgs{
-		ObjectId: e.ObjectID(),
+		ObjectId: e.GetRemoteObjectID(),
 	})
 	if err != nil {
 		return nil, err

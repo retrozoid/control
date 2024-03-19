@@ -78,7 +78,7 @@ func main() {
 		return session.Frame.Query(`.pager__count-pages`).Value().Click()
 	})
 
-	p := session.Frame.Evaluate(`new Promise((a,b) => b('timeout'))`, false).Value().(control.JsObject)
+	p := session.Frame.Evaluate(`new Promise((a,b) => b('timeout'))`, false).Value().(control.RemoteObject)
 	a, b := session.Frame.AwaitPromise(p)
 	log.Println(a, b)
 }

@@ -37,13 +37,13 @@ const (
 	nodeTypeFragment              nodeType = 11 // A DocumentFragment node
 )
 
-type JsObject interface {
-	ObjectID() runtime.RemoteObjectId
+type RemoteObject interface {
+	GetRemoteObjectID() runtime.RemoteObjectId
 }
 
-type RemoteObject runtime.RemoteObjectId
+type remoteObjectValue runtime.RemoteObjectId
 
-func (r RemoteObject) ObjectID() runtime.RemoteObjectId {
+func (r remoteObjectValue) GetRemoteObjectID() runtime.RemoteObjectId {
 	return runtime.RemoteObjectId(r)
 }
 
@@ -100,12 +100,15 @@ func (f *Frame) unserialize(value *runtime.RemoteObject) (any, error) {
 	switch value.DeepSerializedValue.Type {
 
 	case "promise", "function", "weakmap":
-		return RemoteObject(value.ObjectId), nil
+		return remoteObjectValue(value.ObjectId), nil
 
 	case "node":
 		switch getNodeType(value.DeepSerializedValue.Value) {
 		case nodeTypeElement, nodeTypeDocument:
-			return &Node{JsObject: RemoteObject(value.ObjectId), frame: f}, nil
+			return &Node{
+				object: remoteObjectValue(value.ObjectId),
+				frame:  f,
+			}, nil
 		default:
 			return nil, errors.New("unsupported type of node")
 		}
@@ -123,7 +126,7 @@ func (f *Frame) unserialize(value *runtime.RemoteObject) (any, error) {
 }
 
 func (f *Frame) requestNodeList(objectId runtime.RemoteObjectId) (*NodeList, error) {
-	descriptor, err := f.getProperties(RemoteObject(objectId), true, false, false, false)
+	descriptor, err := f.getProperties(remoteObjectValue(objectId), true, false, false, false)
 	if err != nil {
 		return nil, err
 	}
@@ -133,9 +136,9 @@ func (f *Frame) requestNodeList(objectId runtime.RemoteObjectId) (*NodeList, err
 		if d.Enumerable {
 			i++
 			n := &Node{
-				JsObject:    RemoteObject(d.Value.ObjectId),
-				cssSelector: d.Value.Description + fmt.Sprintf("(%d)", i),
-				frame:       f,
+				object:            remoteObjectValue(d.Value.ObjectId),
+				requestedSelector: d.Value.Description + fmt.Sprintf("(%d)", i),
+				frame:             f,
 			}
 			nodeList.Nodes = append(nodeList.Nodes, n)
 		}
@@ -147,8 +150,8 @@ func (f Frame) toCallArgument(args ...any) (arguments []*runtime.CallArgument) {
 	for _, arg := range args {
 		callArg := runtime.CallArgument{}
 		switch a := arg.(type) {
-		case JsObject:
-			callArg.ObjectId = a.ObjectID()
+		case RemoteObject:
+			callArg.ObjectId = a.GetRemoteObjectID()
 		default:
 			callArg.Value = a
 		}
@@ -181,9 +184,9 @@ func (f Frame) evaluate(expression string, awaitPromise bool) (any, error) {
 	return f.unserialize(value.Result)
 }
 
-func (f Frame) AwaitPromise(promise JsObject) (any, error) {
+func (f Frame) AwaitPromise(promise RemoteObject) (any, error) {
 	value, err := runtime.AwaitPromise(f, runtime.AwaitPromiseArgs{
-		PromiseObjectId: promise.ObjectID(),
+		PromiseObjectId: promise.GetRemoteObjectID(),
 		ReturnByValue:   true,
 		GeneratePreview: false,
 	})
@@ -196,10 +199,10 @@ func (f Frame) AwaitPromise(promise JsObject) (any, error) {
 	return f.unserialize(value.Result)
 }
 
-func (f Frame) callFunctionOn(self JsObject, function string, awaitPromise bool, args ...any) (any, error) {
+func (f Frame) callFunctionOn(self RemoteObject, function string, awaitPromise bool, args ...any) (any, error) {
 	value, err := runtime.CallFunctionOn(f, runtime.CallFunctionOnArgs{
 		FunctionDeclaration: function,
-		ObjectId:            self.ObjectID(),
+		ObjectId:            self.GetRemoteObjectID(),
 		AwaitPromise:        awaitPromise,
 		Arguments:           f.toCallArgument(args...),
 		SerializationOptions: &runtime.SerializationOptions{
@@ -215,9 +218,9 @@ func (f Frame) callFunctionOn(self JsObject, function string, awaitPromise bool,
 	return f.unserialize(value.Result)
 }
 
-func (f Frame) getProperties(self JsObject, ownProperties, accessorPropertiesOnly, generatePreview, nonIndexedPropertiesOnly bool) (*runtime.GetPropertiesVal, error) {
+func (f Frame) getProperties(self RemoteObject, ownProperties, accessorPropertiesOnly, generatePreview, nonIndexedPropertiesOnly bool) (*runtime.GetPropertiesVal, error) {
 	value, err := runtime.GetProperties(f, runtime.GetPropertiesArgs{
-		ObjectId:                 self.ObjectID(),
+		ObjectId:                 self.GetRemoteObjectID(),
 		OwnProperties:            ownProperties,
 		AccessorPropertiesOnly:   accessorPropertiesOnly,
 		GeneratePreview:          generatePreview,
@@ -232,9 +235,9 @@ func (f Frame) getProperties(self JsObject, ownProperties, accessorPropertiesOnl
 	return value, nil
 }
 
-func (f Frame) describeNode(self JsObject) (*dom.Node, error) {
+func (f Frame) describeNode(self RemoteObject) (*dom.Node, error) {
 	value, err := dom.DescribeNode(f, dom.DescribeNodeArgs{
-		ObjectId: self.ObjectID(),
+		ObjectId: self.GetRemoteObjectID(),
 	})
 	if err != nil {
 		return nil, err

@@ -9,7 +9,7 @@ type Middleware interface {
 
 type MdlMisclick struct {
 	deadline int64
-	JsObject
+	promise  RemoteObject
 }
 
 var (
@@ -17,7 +17,7 @@ var (
 )
 
 func (t *MdlMisclick) Prelude(n Node) (err error) {
-	t.JsObject, err = n.asyncEval(`function (d) {
+	t.promise, err = n.asyncEval(`function (d) {
 		let self = this;
 		return new Promise((resolve, reject) => {
 			let timer = setTimeout(() => reject('deadline reached'), d)
@@ -52,7 +52,7 @@ func (t *MdlMisclick) Prelude(n Node) (err error) {
 }
 
 func (t *MdlMisclick) Postlude(n Node) error {
-	_, err := n.frame.AwaitPromise(t.JsObject)
+	_, err := n.frame.AwaitPromise(t.promise)
 	if err != nil {
 		switch err.Error() {
 		// click can cause navigate with context lost
@@ -67,11 +67,11 @@ func (t *MdlMisclick) Postlude(n Node) error {
 
 type MdlCurrentEntryChange struct {
 	deadline int64
-	JsObject
+	promise  RemoteObject
 }
 
 func (t *MdlCurrentEntryChange) Prelude(n Node) (err error) {
-	t.JsObject, err = n.asyncEval(`function(d) {
+	t.promise, err = n.asyncEval(`function(d) {
 		return new Promise((resolve,reject) => {
 			setTimeout(reject, d, 'deadline reached')
 			navigation.addEventListener("currententrychange",resolve)
@@ -81,6 +81,6 @@ func (t *MdlCurrentEntryChange) Prelude(n Node) (err error) {
 }
 
 func (t *MdlCurrentEntryChange) Postlude(n Node) error {
-	_, err := n.frame.AwaitPromise(t.JsObject)
+	_, err := n.frame.AwaitPromise(t.promise)
 	return err
 }

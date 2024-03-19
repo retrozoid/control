@@ -11,7 +11,6 @@ import (
 	"github.com/retrozoid/control/cdp"
 	"github.com/retrozoid/control/protocol/browser"
 	"github.com/retrozoid/control/protocol/common"
-	"github.com/retrozoid/control/protocol/dom"
 	"github.com/retrozoid/control/protocol/network"
 	"github.com/retrozoid/control/protocol/overlay"
 	"github.com/retrozoid/control/protocol/page"
@@ -155,9 +154,9 @@ func NewSession(transport *cdp.Transport, targetID target.TargetID) (*Session, e
 	if err = page.Enable(session); err != nil {
 		return nil, err
 	}
-	if err = dom.Enable(session, dom.EnableArgs{}); err != nil {
-		return nil, err
-	}
+	// if err = dom.Enable(session, dom.EnableArgs{IncludeWhitespace: "none"}); err != nil {
+	// return nil, err
+	// }
 	if err = runtime.Enable(session); err != nil {
 		return nil, err
 	}

@@ -143,7 +143,7 @@ func (f Frame) Document() Optional[*Node] {
 		opt.err = NoSuchSelectorError(document)
 	}
 	if opt.value != nil {
-		opt.value.cssSelector = document
+		opt.value.requestedSelector = document
 	}
 	return opt
 }
