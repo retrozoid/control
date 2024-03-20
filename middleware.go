@@ -1,22 +1,26 @@
 package control
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
 
-type Middleware interface {
+var (
+	ClickPreventMisclick       = &MiddlewarePreventMisclick{deadline: time.Second.Milliseconds()}
+	ClickForCurrentEntryChange = &MiddlewareCurrentEntryChange{deadline: time.Second.Milliseconds()}
+)
+
+type NodeMiddleware interface {
 	Prelude(Node) error
 	Postlude(Node) error
 }
 
-type MdlMisclick struct {
+type MiddlewarePreventMisclick struct {
 	deadline int64
 	promise  RemoteObject
 }
 
-var (
-	mdlMisclick = &MdlMisclick{deadline: 1000}
-)
-
-func (t *MdlMisclick) Prelude(n Node) (err error) {
+func (t *MiddlewarePreventMisclick) Prelude(n Node) (err error) {
 	t.promise, err = n.asyncEval(`function (d) {
 		let self = this;
 		return new Promise((resolve, reject) => {
@@ -51,36 +55,33 @@ func (t *MdlMisclick) Prelude(n Node) (err error) {
 	return nil
 }
 
-func (t *MdlMisclick) Postlude(n Node) error {
+func (t *MiddlewarePreventMisclick) Postlude(n Node) error {
 	_, err := n.frame.AwaitPromise(t.promise)
 	if err != nil {
-		switch err.Error() {
 		// click can cause navigate with context lost
-		case `Cannot find context with specified id`:
+		if err.Error() == `Cannot find context with specified id` {
 			return nil
-		default:
-			return err
 		}
 	}
-	return nil
+	return err
 }
 
-type MdlCurrentEntryChange struct {
+type MiddlewareCurrentEntryChange struct {
 	deadline int64
 	promise  RemoteObject
 }
 
-func (t *MdlCurrentEntryChange) Prelude(n Node) (err error) {
+func (t *MiddlewareCurrentEntryChange) Prelude(n Node) (err error) {
 	t.promise, err = n.asyncEval(`function(d) {
 		return new Promise((resolve,reject) => {
 			setTimeout(reject, d, 'deadline reached')
-			navigation.addEventListener("currententrychange",resolve)
+			navigation.addEventListener("currententrychange", resolve)
 		})
 	}`, t.deadline)
 	return err
 }
 
-func (t *MdlCurrentEntryChange) Postlude(n Node) error {
+func (t *MiddlewareCurrentEntryChange) Postlude(n Node) error {
 	_, err := n.frame.AwaitPromise(t.promise)
 	return err
 }

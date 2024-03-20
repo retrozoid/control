@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"log/slog"
 	"sync"
 	"time"
@@ -180,6 +181,10 @@ func (s *Session) EnableHighlight() error {
 func (s *Session) handle(channel chan cdp.Message) error {
 	for message := range channel {
 		switch message.Method {
+
+		case "Page.navigatedWithinDocument":
+			navigatedWithinDocument := mustUnmarshal[page.NavigatedWithinDocument](message)
+			log.Println("Page.navigatedWithinDocument", navigatedWithinDocument.FrameId, navigatedWithinDocument.Url)
 
 		case "Runtime.executionContextCreated":
 			executionContextCreated := mustUnmarshal[runtime.ExecutionContextCreated](message)

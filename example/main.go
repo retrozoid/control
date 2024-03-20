@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/retrozoid/control"
-	"github.com/retrozoid/control/backoff"
+	"github.com/retrozoid/control/retry"
 )
 
 type Handler struct {
@@ -65,8 +65,8 @@ func main() {
 		panic(err)
 	}
 
-	val := backoff.Value(func() ([]string, error) {
-		return session.Frame.QueryAll(".grid-product__title-inner").Value().Map(func(n *control.Node) (string, error) {
+	val := retry.FuncValue(func() ([]string, error) {
+		return session.Frame.QueryAll(".grid-product__title-inner").Value().MapToString(func(n *control.Node) (string, error) {
 			return n.GetText().Unwrap()
 		})
 	})
@@ -74,7 +74,7 @@ func main() {
 
 	session.Frame.Query(`.pager__count-pages`).Value().Clip().Value()
 
-	backoff.Exec(func() error {
+	retry.Func(func() error {
 		return session.Frame.Query(`.pager__count-pages`).Value().Click()
 	})
 

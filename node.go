@@ -371,17 +371,17 @@ func (e Node) Upload(files ...string) error {
 }
 
 func (e Node) Click() error {
-	return e.ClickWithMiddleware(mdlMisclick)
+	return e.ClickFor(ClickPreventMisclick)
 }
 
-func (e Node) ClickWithMiddleware(middle Middleware) error {
+func (e Node) ClickFor(middle NodeMiddleware) error {
 	t := time.Now()
 	err := e.click(middle)
 	e.log(t, "Click", "err", err)
 	return err
 }
 
-func (e Node) click(middle Middleware) (err error) {
+func (e Node) click(middle NodeMiddleware) (err error) {
 	if err = e.ScrollIntoView(); err != nil {
 		return err
 	}
@@ -608,7 +608,7 @@ func (e Node) IsChecked() Optional[bool] {
 	return optional[bool](value, err)
 }
 
-func (nl NodeList) Map(mapFn func(*Node) (string, error)) ([]string, error) {
+func (nl NodeList) MapToString(mapFn func(*Node) (string, error)) ([]string, error) {
 	var r []string
 	for _, node := range nl.Nodes {
 		val, err := mapFn(node)
