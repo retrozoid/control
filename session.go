@@ -11,6 +11,7 @@ import (
 	"github.com/retrozoid/control/cdp"
 	"github.com/retrozoid/control/protocol/browser"
 	"github.com/retrozoid/control/protocol/common"
+	"github.com/retrozoid/control/protocol/layertree"
 	"github.com/retrozoid/control/protocol/network"
 	"github.com/retrozoid/control/protocol/overlay"
 	"github.com/retrozoid/control/protocol/page"
@@ -26,9 +27,10 @@ var (
 const Blank = "about:blank"
 
 var (
-	ErrTargetDestroyed           error = errors.New("target destroyed")
-	ErrTargetDetached            error = errors.New("session detached from target")
-	ErrNetworkIdleReachedTimeout error = errors.New("session network idle reached timeout")
+	ErrTargetDestroyed             error = errors.New("target destroyed")
+	ErrTargetDetached              error = errors.New("session detached from target")
+	ErrNetworkIdleReachedTimeout   error = errors.New("session network idle reached timeout")
+	ErrLayerTreeIdleReachedTimeout error = errors.New("session network idle reached timeout")
 )
 
 type TargetCrashedError []byte
@@ -341,6 +343,40 @@ func (s *Session) NetworkIdle(threshold time.Duration) error {
 			}
 		case <-timer.C:
 			return ErrNetworkIdleReachedTimeout
+		default:
+			if time.Since(last) > threshold {
+				return nil
+			}
+		}
+	}
+}
+
+func (s *Session) LayerTreeIdle(threshold time.Duration) (err error) {
+	var (
+		channel, cancel = s.Subscribe()
+		last            = time.Now().Add(threshold)
+		timer           = time.NewTimer(s.timeout)
+		n               = time.Now()
+	)
+	err = layertree.Enable(s)
+	defer func() {
+		cancel()
+		timer.Stop()
+		err = layertree.Disable(s)
+		s.Log(n, "LayerTreeIdle", "idle_threshold", threshold.String(), "error", err)
+	}()
+	if err != nil {
+		return err
+	}
+	for {
+		select {
+		case value := <-channel:
+			switch value.Method {
+			case "LayerTree.layerPainted", "LayerTree.layerTreeDidChange":
+				last = time.Now()
+			}
+		case <-timer.C:
+			return ErrLayerTreeIdleReachedTimeout
 		default:
 			if time.Since(last) > threshold {
 				return nil
