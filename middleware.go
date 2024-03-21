@@ -17,14 +17,14 @@ type NodeMiddleware interface {
 
 type MiddlewarePreventMisclick struct {
 	deadline int64
-	// promise  RemoteObject
+	promise  RemoteObject
 }
 
 func (t *MiddlewarePreventMisclick) Prelude(n Node) (err error) {
-	_, err = n.eval(`function (d) {
+	t.promise, err = n.asyncEval(`function (d) {
 		let self = this;
-		window.__control_click_promise = new Promise((resolve, reject) => {
-			let timer = setTimeout(() => self.isConnected ? reject('deadline reached') : resolve(), d)
+		return new Promise((resolve, reject) => {
+			// let timer = setTimeout(() => self.isConnected ? reject('deadline reached') : resolve(), d)
 			let isTarget = e => {
 				if (e.isTrusted) {
 					for (let d = e.target; d; d = d.parentNode) {
@@ -56,8 +56,7 @@ func (t *MiddlewarePreventMisclick) Prelude(n Node) (err error) {
 }
 
 func (t *MiddlewarePreventMisclick) Postlude(n Node) error {
-	_, err := n.frame.session.Frame.evaluate(`window.__control_click_promise`, true)
-	// _, err := n.frame.AwaitPromise(t.promise)
+	_, err := n.frame.AwaitPromise(t.promise)
 	if err != nil {
 		// click can cause navigate with context lost
 		if err.Error() == `Cannot find context with specified id` {
