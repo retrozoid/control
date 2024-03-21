@@ -64,7 +64,7 @@ func (f Frame) Navigate(url string) error {
 }
 
 func (f Frame) navigate(url string) error {
-	future := MakeFuture(f.session, "Page.loadEventFired", func(_ page.LoadEventFired) bool {
+	future := Subscribe(f.session, "Page.loadEventFired", func(_ page.LoadEventFired) bool {
 		return true
 	})
 	defer future.Cancel()
@@ -95,7 +95,7 @@ func (f Frame) Reload(ignoreCache bool, scriptToEvaluateOnLoad string) error {
 }
 
 func (f Frame) reload(ignoreCache bool, scriptToEvaluateOnLoad string) error {
-	future := MakeFuture(f.session, "Page.loadEventFired", func(_ page.LoadEventFired) bool {
+	future := Subscribe(f.session, "Page.loadEventFired", func(_ page.LoadEventFired) bool {
 		return true
 	})
 	defer future.Cancel()

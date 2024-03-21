@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
 	"log/slog"
 	"sync"
 	"time"
@@ -27,8 +26,9 @@ var (
 const Blank = "about:blank"
 
 var (
-	ErrTargetDestroyed error = errors.New("target destroyed")
-	ErrTargetDetached  error = errors.New("session detached from target")
+	ErrTargetDestroyed           error = errors.New("target destroyed")
+	ErrTargetDetached            error = errors.New("session detached from target")
+	ErrNetworkIdleReachedTimeout error = errors.New("session network idle reached timeout")
 )
 
 type TargetCrashedError []byte
@@ -155,9 +155,6 @@ func NewSession(transport *cdp.Transport, targetID target.TargetID) (*Session, e
 	if err = page.Enable(session); err != nil {
 		return nil, err
 	}
-	// if err = dom.Enable(session, dom.EnableArgs{IncludeWhitespace: "none"}); err != nil {
-	// return nil, err
-	// }
 	if err = runtime.Enable(session); err != nil {
 		return nil, err
 	}
@@ -181,10 +178,6 @@ func (s *Session) EnableHighlight() error {
 func (s *Session) handle(channel chan cdp.Message) error {
 	for message := range channel {
 		switch message.Method {
-
-		case "Page.navigatedWithinDocument":
-			navigatedWithinDocument := mustUnmarshal[page.NavigatedWithinDocument](message)
-			log.Println("Page.navigatedWithinDocument", navigatedWithinDocument.FrameId, navigatedWithinDocument.Url)
 
 		case "Runtime.executionContextCreated":
 			executionContextCreated := mustUnmarshal[runtime.ExecutionContextCreated](message)
@@ -241,8 +234,8 @@ func (s *Session) SetDownloadBehavior(behavior string, downloadPath string, even
 	})
 }
 
-func (s *Session) GetTargetCreated() FutureWithDeadline[target.TargetCreated] {
-	return MakeFuture(s, "Target.targetCreated", func(t target.TargetCreated) bool {
+func (s *Session) GetTargetCreated() Future[target.TargetCreated] {
+	return Subscribe(s, "Target.targetCreated", func(t target.TargetCreated) bool {
 		return t.TargetInfo.Type == "page" && t.TargetInfo.OpenerId == s.targetID
 	})
 }
@@ -285,7 +278,7 @@ func (s *Session) CloseTarget(id target.TargetID) (err error) {
 	return err
 }
 
-func (s *Session) CaptureNetworkRequest(condition func(request *network.Request) bool, rejectOnLoadingFailed bool) FutureWithDeadline[network.ResponseReceived] {
+func (s *Session) CaptureNetworkRequest(condition func(request *network.Request) bool, rejectOnLoadingFailed bool) Future[network.ResponseReceived] {
 	var requestID network.RequestId
 
 	channel, cancel := s.Subscribe()
@@ -322,4 +315,36 @@ func (s *Session) CaptureNetworkRequest(condition func(request *network.Request)
 	}()
 
 	return NewDeadlineFuture(s.context, s.timeout, future)
+}
+
+func (s *Session) NetworkIdle(threshold time.Duration) error {
+	var (
+		channel, cancel = s.Subscribe()
+		last            = time.Now().Add(threshold)
+		timer           = time.NewTimer(s.timeout)
+		n               = time.Now()
+		messages        = 0
+	)
+	defer func() {
+		cancel()
+		timer.Stop()
+		s.Log(n, "NetworkIdle", "idle_threshold", threshold.String(), "messages", messages)
+	}()
+
+	for {
+		select {
+		case value := <-channel:
+			switch value.Method {
+			case "Network.requestWillBeSent", "Network.responseReceived", "Network.loadingFailed":
+				last = time.Now()
+				messages++
+			}
+		case <-timer.C:
+			return ErrNetworkIdleReachedTimeout
+		default:
+			if time.Since(last) > threshold {
+				return nil
+			}
+		}
+	}
 }

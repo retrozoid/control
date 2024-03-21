@@ -46,12 +46,12 @@ func TakeWithContext(ctx context.Context, logger *slog.Logger, chromeArgs ...str
 }
 
 // Future with session's context
-type FutureWithDeadline[T any] interface {
+type Future[T any] interface {
 	Get() (T, error)
 	Cancel()
 }
 
-func NewDeadlineFuture[T any](ctx context.Context, deadline time.Duration, future cdp.Future[T]) FutureWithDeadline[T] {
+func NewDeadlineFuture[T any](ctx context.Context, deadline time.Duration, future cdp.Future[T]) Future[T] {
 	return deadlineFuture[T]{
 		context:  ctx,
 		deadline: deadline,
@@ -75,7 +75,7 @@ func (f deadlineFuture[T]) Cancel() {
 	f.future.Cancel()
 }
 
-func MakeFuture[T any](s *Session, method string, filter func(T) bool) FutureWithDeadline[T] {
+func Subscribe[T any](s *Session, method string, filter func(T) bool) Future[T] {
 	channel, cancel := s.Subscribe()
 	promise, future := cdp.MakePromise[T](cancel)
 	go func() {

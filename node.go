@@ -410,7 +410,7 @@ func (e Node) ClickablePoint() Optional[Point] {
 	if err != nil {
 		return Optional[Point]{err: err}
 	}
-	_, err = e.frame.evaluate(`new Promise(requestAnimationFrame)`, true)
+	_, err = e.frame.evaluate(`new Promise(r => requestAnimationFrame(() => setTimeout(r,50)))`, true)
 	if err != nil {
 		return Optional[Point]{err: err}
 	}
