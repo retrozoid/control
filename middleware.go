@@ -36,7 +36,7 @@ func (t *MiddlewarePreventMisclick) Prelude(n Node) (err error) {
 				return false
 			}
 			let t = (event) => {
-				clearTimeout(timer)
+				// clearTimeout(timer)
 				if (isTarget(event)) {
 					resolve()
 				} else {
