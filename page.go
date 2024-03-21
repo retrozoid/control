@@ -82,7 +82,7 @@ func (f Frame) navigate(url string) error {
 		return nil
 	}
 	if _, err = future.Get(); err != nil {
-		return err
+		return errors.Join(err, errors.New("navigation did not complete"))
 	}
 	return nil
 }
@@ -107,7 +107,7 @@ func (f Frame) reload(ignoreCache bool, scriptToEvaluateOnLoad string) error {
 		return err
 	}
 	if _, err = future.Get(); err != nil {
-		return err
+		return errors.Join(err, errors.New("reload did not complete"))
 	}
 	return nil
 }
