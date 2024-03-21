@@ -24,7 +24,7 @@ func (t *MiddlewarePreventMisclick) Prelude(n Node) (err error) {
 	t.promise, err = n.asyncEval(`function (d) {
 		let self = this;
 		return new Promise((resolve, reject) => {
-			let timer = setTimeout(() => reject('deadline reached'), d)
+			let timer = setTimeout(() => self.isConnected ? reject('deadline reached') : resolve(), d)
 			let isTarget = e => {
 				if (e.isTrusted) {
 					for (let d = e.target; d; d = d.parentNode) {
