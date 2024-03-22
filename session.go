@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -26,6 +27,25 @@ var (
 )
 
 const Blank = "about:blank"
+const clickHandler = `
+function __control_click_handler(self) {
+    let isTarget = e => {
+        if (e.isTrusted) {
+            for (let d = e.target; d; d = d.parentNode) {
+                if (d === self) {
+                    %s('hit')
+                    return
+                }
+            }
+        }
+        e.stopPropagation()
+        e.preventDefault()
+        e.stopImmediatePropagation()
+		%s(e.target.outerHTML)
+    }
+    window.addEventListener("click", isTarget, { capture: true, once: true, passive: false })
+}
+`
 
 var (
 	ErrTargetDestroyed             error = errors.New("target destroyed")
@@ -124,6 +144,10 @@ func (s *Session) Subscribe() (channel chan cdp.Message, cancel func()) {
 	return s.transport.Subscribe(s.sessionID)
 }
 
+func (s *Session) getClickHandlerName() string {
+	return `__click_` + s.sessionID
+}
+
 func NewSession(transport *cdp.Transport, targetID target.TargetID) (*Session, error) {
 	var session = &Session{
 		transport: transport,
@@ -168,6 +192,15 @@ func NewSession(transport *cdp.Transport, targetID target.TargetID) (*Session, e
 		return nil, err
 	}
 	if err = network.Enable(session, network.EnableArgs{MaxPostDataSize: MaxPostDataSize}); err != nil {
+		return nil, err
+	}
+	var bindingCall = session.getClickHandlerName()
+	if err = runtime.AddBinding(session, runtime.AddBindingArgs{Name: bindingCall}); err != nil {
+		return nil, err
+	}
+	if _, err = page.AddScriptToEvaluateOnNewDocument(session, page.AddScriptToEvaluateOnNewDocumentArgs{
+		Source: fmt.Sprintf(clickHandler, bindingCall, bindingCall),
+	}); err != nil {
 		return nil, err
 	}
 	return session, nil

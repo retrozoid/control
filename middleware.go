@@ -1,8 +1,10 @@
 package control
 
 import (
-	"errors"
+	"fmt"
 	"time"
+
+	"github.com/retrozoid/control/protocol/runtime"
 )
 
 var (
@@ -17,29 +19,18 @@ type NodeMiddleware interface {
 
 type MiddlewarePreventMisclick struct {
 	deadline int64
-	promise  RemoteObject
+	future   Future[runtime.BindingCalled]
 }
 
 func (t *MiddlewarePreventMisclick) Prelude(n Node) (err error) {
-	t.promise, err = n.asyncEval(`function () {
-		return new Promise((resolve, reject) => {
-			let isTarget = e => {
-				if (e.isTrusted) {
-					for (let d = e.target; d; d = d.parentNode) {
-						if (d === this) {
-							resolve('resolved')
-							return
-						}
-					}
-				}
-				e.stopPropagation()
-				e.preventDefault()
-				e.stopImmediatePropagation()
-				reject(e.target)
-			}
-			window.addEventListener("click", isTarget, { capture: true, once: true, passive: false });
-		})
-	}`)
+	_, err = n.eval(`function () {__control_click_handler(this)}`)
+	if err != nil {
+		return err
+	}
+	t.future = Subscribe(n.frame.session, "Runtime.bindingCalled", func(b runtime.BindingCalled) bool {
+		return b.Name == n.frame.session.getClickHandlerName()
+	})
+	return nil
 	// t.promise, err = n.asyncEval(`function (d) {
 	// 	let self = this;
 	// 	return new Promise((resolve, reject) => {
@@ -68,21 +59,22 @@ func (t *MiddlewarePreventMisclick) Prelude(n Node) (err error) {
 	// 		window.addEventListener("click", t, { capture: true, once: true, passive: false });
 	// 	});
 	// }`, t.deadline)
-	if err != nil {
-		return errors.Join(err, errors.New("addEventListener for click failed"))
-	}
-	return nil
 }
 
 func (t *MiddlewarePreventMisclick) Postlude(n Node) error {
-	_, err := n.frame.AwaitPromise(t.promise)
+	b, err := t.future.Get()
+	// _, err := n.frame.AwaitPromise(t.promise)
 	if err != nil {
 		// click can cause navigate with context lost
 		if err.Error() == `Cannot find context with specified id` {
 			return nil
 		}
+		return err
 	}
-	return err
+	if b.Payload == "hit" {
+		return nil
+	}
+	return fmt.Errorf("click failed due overlapped " + b.Payload)
 }
 
 type MiddlewareCurrentEntryChange struct {
