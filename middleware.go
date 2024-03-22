@@ -21,34 +21,53 @@ type MiddlewarePreventMisclick struct {
 }
 
 func (t *MiddlewarePreventMisclick) Prelude(n Node) (err error) {
-	t.promise, err = n.asyncEval(`function (d) {
-		let self = this;
+	t.promise, err = n.asyncEval(`function () {
 		return new Promise((resolve, reject) => {
-			// let timer = setTimeout(() => self.isConnected ? reject('deadline reached') : resolve(), d)
 			let isTarget = e => {
 				if (e.isTrusted) {
 					for (let d = e.target; d; d = d.parentNode) {
-						if (d === self) {
-							return true
+						if (d === this) {
+							resolve('resolved')
+							return
 						}
 					}
 				}
-				return false
+				e.stopPropagation()
+				e.preventDefault()
+				e.stopImmediatePropagation()
+				reject(e.target)
 			}
-			let t = (event) => {
-				// clearTimeout(timer)
-				if (isTarget(event)) {
-					resolve()
-				} else {
-					event.stopPropagation()
-					event.preventDefault()
-					event.stopImmediatePropagation()
-					reject("misclicked")
-				}
-			};
-			window.addEventListener("click", t, { capture: true, once: true, passive: false });
-		});
-	}`, t.deadline)
+			window.addEventListener("click", isTarget, { capture: true, once: true, passive: false });
+		})
+	}`)
+	// t.promise, err = n.asyncEval(`function (d) {
+	// 	let self = this;
+	// 	return new Promise((resolve, reject) => {
+	// 		// let timer = setTimeout(() => self.isConnected ? reject('deadline reached') : resolve(), d)
+	// 		let isTarget = e => {
+	// 			if (e.isTrusted) {
+	// 				for (let d = e.target; d; d = d.parentNode) {
+	// 					if (d === self) {
+	// 						return true
+	// 					}
+	// 				}
+	// 			}
+	// 			return false
+	// 		}
+	// 		let t = (event) => {
+	// 			// clearTimeout(timer)
+	// 			if (isTarget(event)) {
+	// 				resolve()
+	// 			} else {
+	// 				event.stopPropagation()
+	// 				event.preventDefault()
+	// 				event.stopImmediatePropagation()
+	// 				reject("misclicked")
+	// 			}
+	// 		};
+	// 		window.addEventListener("click", t, { capture: true, once: true, passive: false });
+	// 	});
+	// }`, t.deadline)
 	if err != nil {
 		return errors.Join(err, errors.New("addEventListener for click failed"))
 	}

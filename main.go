@@ -66,9 +66,9 @@ type deadlineFuture[T any] struct {
 }
 
 func (f deadlineFuture[T]) Get() (T, error) {
-	timeoutContext, cancel := context.WithTimeout(f.context, f.deadline)
+	withTimeout, cancel := context.WithTimeout(f.context, f.deadline)
 	defer cancel()
-	return f.future.Get(timeoutContext)
+	return f.future.Get(withTimeout)
 }
 
 func (f deadlineFuture[T]) Cancel() {
@@ -77,7 +77,7 @@ func (f deadlineFuture[T]) Cancel() {
 
 func Subscribe[T any](s *Session, method string, filter func(T) bool) Future[T] {
 	channel, cancel := s.Subscribe()
-	promise, future := cdp.MakePromise[T](cancel)
+	promise, future := cdp.NewPromise[T](cancel)
 	go func() {
 		for value := range channel {
 			if value.Method == method {

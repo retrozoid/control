@@ -188,11 +188,11 @@ func (e Node) ReleaseObject() error {
 }
 
 func (e Node) eval(function string, args ...any) (any, error) {
-	return e.frame.callFunctionOn(e, function, true, args...)
+	return e.frame.CallFunctionOn(e, function, true, args...)
 }
 
 func (e Node) asyncEval(function string, args ...any) (RemoteObject, error) {
-	value, err := e.frame.callFunctionOn(e, function, false, args...)
+	value, err := e.frame.CallFunctionOn(e, function, false, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -282,9 +282,8 @@ func (e Node) contentFrame() (*Frame, error) {
 }
 
 func (e Node) ScrollIntoView() error {
-	return dom.ScrollIntoViewIfNeeded(e, dom.ScrollIntoViewIfNeededArgs{
-		ObjectId: e.GetRemoteObjectID(),
-	})
+	_, err := e.eval(`function(){this.scrollIntoViewIfNeeded(!0)}`)
+	return err
 }
 
 func (e Node) GetText() Optional[string] {
@@ -295,9 +294,7 @@ func (e Node) GetText() Optional[string] {
 }
 
 func (e Node) Focus() error {
-	return dom.Focus(e, dom.FocusArgs{
-		ObjectId: e.GetRemoteObjectID(),
-	})
+	return dom.Focus(e, dom.FocusArgs{ObjectId: e.GetRemoteObjectID()})
 }
 
 func (e Node) Blur() error {

@@ -199,7 +199,7 @@ func (f Frame) AwaitPromise(promise RemoteObject) (any, error) {
 	return f.unserialize(value.Result)
 }
 
-func (f Frame) callFunctionOn(self RemoteObject, function string, awaitPromise bool, args ...any) (any, error) {
+func (f Frame) CallFunctionOn(self RemoteObject, function string, awaitPromise bool, args ...any) (any, error) {
 	value, err := runtime.CallFunctionOn(f, runtime.CallFunctionOnArgs{
 		FunctionDeclaration: function,
 		ObjectId:            self.GetRemoteObjectID(),

@@ -11,6 +11,7 @@ import (
 	"github.com/retrozoid/control/cdp"
 	"github.com/retrozoid/control/protocol/browser"
 	"github.com/retrozoid/control/protocol/common"
+	"github.com/retrozoid/control/protocol/dom"
 	"github.com/retrozoid/control/protocol/layertree"
 	"github.com/retrozoid/control/protocol/network"
 	"github.com/retrozoid/control/protocol/overlay"
@@ -160,6 +161,9 @@ func NewSession(transport *cdp.Transport, targetID target.TargetID) (*Session, e
 	if err = runtime.Enable(session); err != nil {
 		return nil, err
 	}
+	if err = dom.Enable(session, dom.EnableArgs{IncludeWhitespace: "none"}); err != nil {
+		return nil, err
+	}
 	if err = target.SetDiscoverTargets(session, target.SetDiscoverTargetsArgs{Discover: true}); err != nil {
 		return nil, err
 	}
@@ -284,7 +288,7 @@ func (s *Session) CaptureNetworkRequest(condition func(request *network.Request)
 	var requestID network.RequestId
 
 	channel, cancel := s.Subscribe()
-	promise, future := cdp.MakePromise[network.ResponseReceived](cancel)
+	promise, future := cdp.NewPromise[network.ResponseReceived](cancel)
 
 	go func() {
 		for value := range channel {
@@ -319,43 +323,57 @@ func (s *Session) CaptureNetworkRequest(condition func(request *network.Request)
 	return NewDeadlineFuture(s.context, s.timeout, future)
 }
 
-func (s *Session) NetworkIdle(threshold time.Duration) error {
+func (s *Session) NetworkIdle(threshold time.Duration, timeout time.Duration) error {
 	var (
 		channel, cancel = s.Subscribe()
-		last            = time.Now().Add(threshold)
-		timer           = time.NewTimer(s.timeout)
+		last            = time.Now().Add(timeout)
+		timer           = time.NewTimer(timeout)
 		n               = time.Now()
-		messages        = 0
+		requests        = 0
+		queue           = map[network.RequestId]*network.Request{}
 	)
 	defer func() {
 		cancel()
 		timer.Stop()
-		s.Log(n, "NetworkIdle", "idle_threshold", threshold.String(), "messages", messages)
+		s.Log(n, "NetworkIdle", "idle_threshold", threshold.String(), "requests", requests)
 	}()
 
 	for {
 		select {
 		case value := <-channel:
 			switch value.Method {
-			case "Network.requestWillBeSent", "Network.responseReceived", "Network.loadingFailed":
+
+			case "Network.requestWillBeSent":
+				willBeSent := mustUnmarshal[network.RequestWillBeSent](value)
+				queue[willBeSent.RequestId] = willBeSent.Request
 				last = time.Now()
-				messages++
+				requests++
+
+			case "Network.responseReceived":
+				received := mustUnmarshal[network.ResponseReceived](value)
+				delete(queue, received.RequestId)
+				last = time.Now()
+
+			case "Network.loadingFailed":
+				loadingFailed := mustUnmarshal[network.LoadingFailed](value)
+				delete(queue, loadingFailed.RequestId)
+				last = time.Now()
 			}
 		case <-timer.C:
 			return ErrNetworkIdleReachedTimeout
 		default:
-			if time.Since(last) > threshold {
+			if time.Since(last) > threshold && len(queue) == 0 {
 				return nil
 			}
 		}
 	}
 }
 
-func (s *Session) LayerTreeIdle(threshold time.Duration) (err error) {
+func (s *Session) LayerTreeIdle(threshold time.Duration, timeout time.Duration) (err error) {
 	var (
 		channel, cancel = s.Subscribe()
 		last            = time.Now().Add(threshold)
-		timer           = time.NewTimer(s.timeout)
+		timer           = time.NewTimer(timeout)
 		n               = time.Now()
 	)
 	err = layertree.Enable(s)

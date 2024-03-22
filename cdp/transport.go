@@ -117,7 +117,7 @@ func (t *Transport) Subscribe(sessionID string) (chan Message, func()) {
 }
 
 func (t *Transport) Send(request *Request) ResponseFuture {
-	var resolver, future = MakePromise[Response](func() {})
+	var resolver, future = NewPromise[Response](nil)
 	if t.isClosed() {
 		resolver.Reject(t.error())
 		return future

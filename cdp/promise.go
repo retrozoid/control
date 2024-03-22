@@ -23,10 +23,10 @@ type Promise[T any] interface {
 	Reject(error)
 }
 
-func MakePromise[T any](onClose func()) (Promise[T], Future[T]) {
+func NewPromise[T any](clean func()) (Promise[T], Future[T]) {
 	value := &promise[T]{
 		fulfilled: make(chan struct{}, 1),
-		onClose:   onClose,
+		clean:     clean,
 	}
 	return value, value
 }
@@ -36,7 +36,7 @@ type promise[T any] struct {
 	fulfilled chan struct{}
 	value     T
 	err       error
-	onClose   func()
+	clean     func()
 }
 
 func (u *promise[T]) Get(parent context.Context) (T, error) {
@@ -57,7 +57,9 @@ func (u *promise[T]) Resolve(value T) {
 	u.once.Do(func() {
 		u.value = value
 		close(u.fulfilled)
-		u.onClose()
+		if u.clean != nil {
+			u.clean()
+		}
 	})
 }
 
@@ -65,6 +67,8 @@ func (u *promise[T]) Reject(err error) {
 	u.once.Do(func() {
 		u.err = err
 		close(u.fulfilled)
-		u.onClose()
+		if u.clean != nil {
+			u.clean()
+		}
 	})
 }
