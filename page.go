@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/retrozoid/control/protocol/common"
+	"github.com/retrozoid/control/protocol/dom"
 	"github.com/retrozoid/control/protocol/page"
 )
 
@@ -134,6 +135,19 @@ func (f Frame) Evaluate(expression string, awaitPromise bool) Optional[any] {
 		"err", err,
 	)
 	return Optional[any]{value: value, err: err}
+}
+
+func (f Frame) getNodeForLocation(p Point) (dom.NodeId, error) {
+	value, err := dom.GetNodeForLocation(f, dom.GetNodeForLocationArgs{
+		X:                         int(p.X),
+		Y:                         int(p.Y),
+		IncludeUserAgentShadowDOM: true,
+		IgnorePointerEventsNone:   true,
+	})
+	if err != nil {
+		return 0, nil
+	}
+	return value.NodeId, nil
 }
 
 func (f Frame) Document() Optional[*Node] {

@@ -235,19 +235,25 @@ func (e Node) AsyncCallFunctionOn(function string, args ...any) Optional[RemoteO
 
 func (e Node) Query(cssSelector string) Optional[*Node] {
 	t := time.Now()
-	value, err := e.eval(`function(s){return this.querySelector(s)}`, cssSelector)
-	opt := optional[*Node](value, err)
-	if opt.err == nil && opt.value == nil {
-		opt.err = NoSuchSelectorError(cssSelector)
-	}
-	if opt.value != nil {
-		if e.frame.session.highlightEnabled {
-			_ = opt.value.Highlight()
-		}
-		opt.value.requestedSelector = cssSelector
-	}
+	opt := optional[*Node](e.query(cssSelector))
 	e.log(t, "Query", "cssSelector", cssSelector, "err", opt.err)
 	return opt
+}
+
+func (e Node) query(cssSelector string) (*Node, error) {
+	value, err := e.eval(`function(s){return this.querySelector(s)}`, cssSelector)
+	if err != nil {
+		return nil, err
+	}
+	if value == nil {
+		return nil, NoSuchSelectorError(cssSelector)
+	}
+	node := value.(*Node)
+	if e.frame.session.highlightEnabled {
+		_ = node.Highlight()
+	}
+	node.requestedSelector = cssSelector
+	return node, nil
 }
 
 func (e Node) QueryAll(cssSelector string) Optional[*NodeList] {
@@ -368,17 +374,13 @@ func (e Node) Upload(files ...string) error {
 }
 
 func (e Node) Click() error {
-	return e.ClickFor(ClickPreventMisclick)
-}
-
-func (e Node) ClickFor(middle NodeMiddleware) error {
 	t := time.Now()
-	err := e.click(middle)
+	err := e.click()
 	e.log(t, "Click", "err", err)
 	return err
 }
 
-func (e Node) click(middle NodeMiddleware) (err error) {
+func (e Node) click() (err error) {
 	if err = e.ScrollIntoView(); err != nil {
 		return err
 	}
@@ -386,13 +388,22 @@ func (e Node) click(middle NodeMiddleware) (err error) {
 	if err != nil {
 		return err
 	}
-	if err = middle.Prelude(e); err != nil {
+	hit, err := e.eval(`function(x,y) {
+		for (let d = document.elementFromPoint(x,y); d; d = d.parentNode) {
+			if (d === this) return true
+		}
+		return false
+	}`, point.X, point.Y)
+	if err != nil {
 		return err
+	}
+	if !hit.(bool) {
+		return ErrElementUnclickable
 	}
 	if err = e.frame.Click(point); err != nil {
 		return err
 	}
-	return middle.Postlude(e)
+	return nil
 }
 
 func (e Node) ClickablePoint() Optional[Point] {

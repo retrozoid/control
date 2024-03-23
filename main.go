@@ -94,6 +94,5 @@ func Subscribe[T any](s *Session, method string, filter func(T) bool) Future[T] 
 			}
 		}
 	}()
-
 	return NewDeadlineFuture(s.context, s.timeout, future)
 }

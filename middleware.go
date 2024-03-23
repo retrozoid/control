@@ -1,7 +1,6 @@
 package control
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/retrozoid/control/protocol/runtime"
@@ -23,13 +22,6 @@ type MiddlewarePreventMisclick struct {
 }
 
 func (t *MiddlewarePreventMisclick) Prelude(n Node) (err error) {
-	_, err = n.eval(`function () {__control_click_handler(this)}`)
-	if err != nil {
-		return err
-	}
-	t.future = Subscribe(n.frame.session, "Runtime.bindingCalled", func(b runtime.BindingCalled) bool {
-		return b.Name == n.frame.session.getClickHandlerName()
-	})
 	return nil
 	// t.promise, err = n.asyncEval(`function (d) {
 	// 	let self = this;
@@ -62,19 +54,15 @@ func (t *MiddlewarePreventMisclick) Prelude(n Node) (err error) {
 }
 
 func (t *MiddlewarePreventMisclick) Postlude(n Node) error {
-	b, err := t.future.Get()
+	return nil
 	// _, err := n.frame.AwaitPromise(t.promise)
-	if err != nil {
-		// click can cause navigate with context lost
-		if err.Error() == `Cannot find context with specified id` {
-			return nil
-		}
-		return err
-	}
-	if b.Payload == "hit" {
-		return nil
-	}
-	return fmt.Errorf("click failed due overlapped " + b.Payload)
+	// if err != nil {
+	// 	// click can cause navigate with context lost
+	// 	if err.Error() == `Cannot find context with specified id` {
+	// 		return nil
+	// 	}
+	// 	return err
+	// }
 }
 
 type MiddlewareCurrentEntryChange struct {
