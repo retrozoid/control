@@ -119,3 +119,67 @@ func (k Keyboard) Press(key key.Definition, delay time.Duration) (err error) {
 	}
 	return k.Up(key)
 }
+
+type Touch struct {
+	caller protocol.Caller
+	mutex  *sync.Mutex
+}
+
+func NewTouch(caller protocol.Caller) Touch {
+	return Touch{
+		caller: caller,
+		mutex:  &sync.Mutex{},
+	}
+}
+
+func (t Touch) Start(x, y, radiusX, radiusY, force float64) error {
+	return input.DispatchTouchEvent(t.caller, input.DispatchTouchEventArgs{
+		Type: "touchStart",
+		TouchPoints: []*input.TouchPoint{
+			{
+				X:       x,
+				Y:       y,
+				RadiusX: radiusX,
+				RadiusY: radiusY,
+				Force:   force,
+			},
+		},
+	})
+}
+
+func (t Touch) Swipe(x, y, dx, dy float64) (err error) {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+	if err = t.Start(x, y, 1, 1, 1); err != nil {
+		return err
+	}
+	if err = t.Move(x, y, 1, 1, 1); err != nil {
+		return err
+	}
+	if err = t.End(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (t Touch) Move(x, y, radiusX, radiusY, force float64) error {
+	return input.DispatchTouchEvent(t.caller, input.DispatchTouchEventArgs{
+		Type: "touchMove",
+		TouchPoints: []*input.TouchPoint{
+			{
+				X:       x,
+				Y:       y,
+				RadiusX: radiusX,
+				RadiusY: radiusY,
+				Force:   force,
+			},
+		},
+	})
+}
+
+func (t Touch) End() error {
+	return input.DispatchTouchEvent(t.caller, input.DispatchTouchEventArgs{
+		Type:        "touchEnd",
+		TouchPoints: []*input.TouchPoint{},
+	})
+}

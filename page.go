@@ -9,6 +9,7 @@ import (
 	"github.com/retrozoid/control/protocol/common"
 	"github.com/retrozoid/control/protocol/dom"
 	"github.com/retrozoid/control/protocol/page"
+	"github.com/retrozoid/control/protocol/runtime"
 )
 
 const (
@@ -19,14 +20,14 @@ const (
 type Queryable interface {
 	Query(string) Optional[*Node]
 	QueryAll(string) Optional[*NodeList]
-	OwnFrame() *Frame
+	OwnerFrame() *Frame
 }
 
 type Frame struct {
-	session     *Session
-	id          common.FrameId
-	cssSelector string
-	parent      *Frame
+	node    *Node
+	session *Session
+	id      common.FrameId
+	parent  *Frame
 }
 
 func (f Frame) GetSession() *Session {
@@ -44,7 +45,7 @@ func (f Frame) Call(method string, send, recv any) error {
 	return f.session.Call(method, send, recv)
 }
 
-func (f *Frame) OwnFrame() *Frame {
+func (f *Frame) OwnerFrame() *Frame {
 	return f
 }
 
@@ -137,7 +138,17 @@ func (f Frame) Evaluate(expression string, awaitPromise bool) Optional[any] {
 	return Optional[any]{value: value, err: err}
 }
 
-func (f Frame) getNodeForLocation(p Point) (dom.NodeId, error) {
+func (f Frame) resolveNode(backendNodeId dom.BackendNodeId) (runtime.RemoteObjectId, error) {
+	value, err := dom.ResolveNode(f, dom.ResolveNodeArgs{
+		BackendNodeId: backendNodeId,
+	})
+	if err != nil {
+		return "", err
+	}
+	return value.Object.ObjectId, nil
+}
+
+func (f Frame) getNodeForLocation(p Point) (dom.BackendNodeId, error) {
 	value, err := dom.GetNodeForLocation(f, dom.GetNodeForLocationArgs{
 		X:                         int(p.X),
 		Y:                         int(p.Y),
@@ -145,9 +156,9 @@ func (f Frame) getNodeForLocation(p Point) (dom.NodeId, error) {
 		IgnorePointerEventsNone:   true,
 	})
 	if err != nil {
-		return 0, nil
+		return 0, err
 	}
-	return value.NodeId, nil
+	return value.BackendNodeId, nil
 }
 
 func (f Frame) Document() Optional[*Node] {
@@ -178,65 +189,21 @@ func (f Frame) QueryAll(cssSelector string) Optional[*NodeList] {
 	return doc.QueryAll(cssSelector)
 }
 
-func (f Frame) Click(point Point) error {
-	return f.session.mouse.Click(MouseLeft, point, time.Millisecond*85)
-}
-
-func (f Frame) Hover(point Point) error {
-	return f.session.mouse.Move(MouseNone, point)
-}
-
-func (f Frame) GetLayout() Optional[page.GetLayoutMetricsVal] {
-	view, err := page.GetLayoutMetrics(f)
+func (f Frame) GetOffset() (p Point, err error) {
+	if f.node == nil {
+		return p, nil
+	}
+	if f.parent != nil {
+		p, err = f.parent.GetOffset()
+		if err != nil {
+			return p, err
+		}
+	}
+	q, err := f.node.getContentQuad(false)
 	if err != nil {
-		return Optional[page.GetLayoutMetricsVal]{err: err}
+		return p, err
 	}
-	return Optional[page.GetLayoutMetricsVal]{value: *view}
-}
-
-func (f Frame) GetNavigationEntry() Optional[page.NavigationEntry] {
-	val, err := page.GetNavigationHistory(f)
-	if err != nil {
-		return Optional[page.NavigationEntry]{err: err}
-	}
-	if val.CurrentIndex == -1 {
-		return Optional[page.NavigationEntry]{value: page.NavigationEntry{Url: Blank}}
-	}
-	return Optional[page.NavigationEntry]{value: *val.Entries[val.CurrentIndex]}
-}
-
-func (f Frame) GetCurrentURL() Optional[string] {
-	now := time.Now()
-	opt := optional[string](f.getCurrentURL())
-	f.Log(now, "GetCurrentURL", "value", opt.value, "err", opt.err)
-	return opt
-}
-
-func (f Frame) getCurrentURL() (string, error) {
-	e, err := f.GetNavigationEntry().Unwrap()
-	if err != nil {
-		return "", err
-	}
-	return e.Url, nil
-}
-
-func (f Frame) NavigateHistory(delta int) error {
-	now := time.Now()
-	err := f.navigateHistory(delta)
-	f.Log(now, "NavigateHistory", "delta", delta, "err", err)
-	return err
-}
-
-func (f Frame) navigateHistory(delta int) error {
-	val, err := page.GetNavigationHistory(f)
-	if err != nil {
-		return err
-	}
-	move := val.CurrentIndex + delta
-	if move >= 0 && move < len(val.Entries) {
-		return page.NavigateToHistoryEntry(f, page.NavigateToHistoryEntryArgs{
-			EntryId: val.Entries[move].Id,
-		})
-	}
-	return nil
+	p.X += q[0].X
+	p.Y += q[0].Y
+	return p, nil
 }

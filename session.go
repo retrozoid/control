@@ -60,6 +60,7 @@ type Session struct {
 	highlightEnabled bool
 	mouse            Mouse
 	kb               Keyboard
+	touch            Touch
 }
 
 func (s *Session) Transport() *cdp.Transport {
@@ -133,6 +134,7 @@ func NewSession(transport *cdp.Transport, targetID target.TargetID) (*Session, e
 	}
 	session.mouse = NewMouse(session)
 	session.kb = NewKeyboard(session)
+	session.touch = NewTouch(session)
 	session.Frame = &Frame{
 		session: session,
 		id:      common.FrameId(session.targetID),
@@ -293,6 +295,73 @@ func (s *Session) CloseTarget(id target.TargetID) (err error) {
 		return nil
 	}
 	return err
+}
+
+func (s *Session) Click(point Point) error {
+	return s.mouse.Click(MouseLeft, point, time.Millisecond*85)
+}
+
+func (s *Session) Swipe(from, to Point) error {
+	return s.touch.Swipe(from.X, from.Y, to.X, to.Y)
+}
+
+func (s *Session) Hover(point Point) error {
+	return s.mouse.Move(MouseNone, point)
+}
+
+func (s *Session) GetLayout() Optional[page.GetLayoutMetricsVal] {
+	view, err := page.GetLayoutMetrics(s)
+	if err != nil {
+		return Optional[page.GetLayoutMetricsVal]{err: err}
+	}
+	return Optional[page.GetLayoutMetricsVal]{value: *view}
+}
+
+func (s *Session) GetNavigationEntry() Optional[page.NavigationEntry] {
+	val, err := page.GetNavigationHistory(s)
+	if err != nil {
+		return Optional[page.NavigationEntry]{err: err}
+	}
+	if val.CurrentIndex == -1 {
+		return Optional[page.NavigationEntry]{value: page.NavigationEntry{Url: Blank}}
+	}
+	return Optional[page.NavigationEntry]{value: *val.Entries[val.CurrentIndex]}
+}
+
+func (s *Session) GetCurrentURL() Optional[string] {
+	now := time.Now()
+	opt := optional[string](s.getCurrentURL())
+	s.Log(now, "GetCurrentURL", "value", opt.value, "err", opt.err)
+	return opt
+}
+
+func (s *Session) getCurrentURL() (string, error) {
+	e, err := s.GetNavigationEntry().Unwrap()
+	if err != nil {
+		return "", err
+	}
+	return e.Url, nil
+}
+
+func (s *Session) NavigateHistory(delta int) error {
+	now := time.Now()
+	err := s.navigateHistory(delta)
+	s.Log(now, "NavigateHistory", "delta", delta, "err", err)
+	return err
+}
+
+func (s *Session) navigateHistory(delta int) error {
+	val, err := page.GetNavigationHistory(s)
+	if err != nil {
+		return err
+	}
+	move := val.CurrentIndex + delta
+	if move >= 0 && move < len(val.Entries) {
+		return page.NavigateToHistoryEntry(s, page.NavigateToHistoryEntryArgs{
+			EntryId: val.Entries[move].Id,
+		})
+	}
+	return nil
 }
 
 func (s *Session) CaptureNetworkRequest(condition func(request *network.Request) bool, rejectOnLoadingFailed bool) Future[network.ResponseReceived] {

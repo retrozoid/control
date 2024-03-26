@@ -95,6 +95,7 @@ func Launch(ctx context.Context, userFlags ...string) (value Chrome, err error) 
 		return value, err
 	}
 	// https://github.com/GoogleChrome/chrome-launcher/blob/master/docs/chrome-flags-for-tools.md
+	// https://docs.google.com/spreadsheets/d/1n-vw_PCPS45jX3Jt9jQaAhFqBY6Ge1vWF_Pa0k7dCk4/edit#gid=1265672696
 	flags := []string{
 		"--remote-debugging-port=0",
 		"--user-data-dir=" + value.UserDataDir,

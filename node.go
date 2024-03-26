@@ -163,7 +163,7 @@ func (e Node) GetRemoteObjectID() runtime.RemoteObjectId {
 	return e.object.GetRemoteObjectID()
 }
 
-func (e Node) OwnFrame() *Frame {
+func (e Node) OwnerFrame() *Frame {
 	return e.frame
 }
 
@@ -274,16 +274,16 @@ func (e Node) ContentFrame() Optional[*Frame] {
 	return opt
 }
 
-func (e Node) contentFrame() (*Frame, error) {
+func (e *Node) contentFrame() (*Frame, error) {
 	value, err := e.frame.describeNode(e)
 	if err != nil {
 		return nil, err
 	}
 	return &Frame{
-		id:          value.FrameId,
-		session:     e.frame.session,
-		cssSelector: e.requestedSelector,
-		parent:      e.frame,
+		id:      value.FrameId,
+		session: e.frame.session,
+		parent:  e.frame,
+		node:    e,
 	}, nil
 }
 
@@ -388,19 +388,23 @@ func (e Node) click() (err error) {
 	if err != nil {
 		return err
 	}
+	localPoint, err := e.frame.GetOffset()
+	if err != nil {
+		return err
+	}
 	hit, err := e.eval(`function(x,y) {
-		for (let d = document.elementFromPoint(x,y); d; d = d.parentNode) {
+		for (let d = this.ownerDocument.elementFromPoint(x,y); d; d = d.parentNode) {
 			if (d === this) return true
 		}
 		return false
-	}`, point.X, point.Y)
+	}`, point.X-localPoint.X, point.Y-localPoint.Y)
 	if err != nil {
 		return err
 	}
 	if !hit.(bool) {
 		return ErrElementUnclickable
 	}
-	if err = e.frame.Click(point); err != nil {
+	if err = e.frame.session.Click(point); err != nil {
 		return err
 	}
 	return nil
@@ -470,10 +474,10 @@ func (e Node) getContentQuad(viewportCorrection bool) (Quad, error) {
 	if len(quads) == 0 { // should be at least one
 		return nil, errors.New("node has no visible bounds")
 	}
-	layout, err := e.frame.GetLayout().Unwrap()
-	if err != nil {
-		return nil, err
-	}
+	// layout, err := e.frame.GetLayout().Unwrap()
+	// if err != nil {
+	// 	return nil, err
+	// }
 	for _, quad := range quads {
 		/* correction is get sub-quad of element that in viewport
 		 _______________  <- Viewport top
@@ -483,12 +487,12 @@ func (e Node) getContentQuad(viewportCorrection bool) (Quad, error) {
 		|   |invisib|   | this invisible part of element omits if viewportCorrection
 		|...............|
 		*/
-		if viewportCorrection {
-			for i := 0; i < len(quad); i++ {
-				quad[i].X = math.Min(math.Max(quad[i].X, 0), float64(layout.CssLayoutViewport.ClientWidth))
-				quad[i].Y = math.Min(math.Max(quad[i].Y, 0), float64(layout.CssLayoutViewport.ClientHeight))
-			}
-		}
+		// if viewportCorrection {
+		// 	for i := 0; i < len(quad); i++ {
+		// 		quad[i].X = math.Min(math.Max(quad[i].X, 0), float64(layout.CssLayoutViewport.ClientWidth))
+		// 		quad[i].Y = math.Min(math.Max(quad[i].Y, 0), float64(layout.CssLayoutViewport.ClientHeight))
+		// 	}
+		// }
 		if quad.Area() > 1 {
 			return quad, nil
 		}
@@ -511,7 +515,7 @@ func (e Node) hover() error {
 	if err != nil {
 		return err
 	}
-	return e.frame.Hover(p)
+	return e.frame.session.Hover(p)
 }
 
 func (e Node) GetComputedStyle(style string, pseudo string) Optional[string] {
