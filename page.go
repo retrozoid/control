@@ -188,22 +188,3 @@ func (f Frame) QueryAll(cssSelector string) Optional[*NodeList] {
 	}
 	return doc.QueryAll(cssSelector)
 }
-
-func (f Frame) GetOffset() (p Point, err error) {
-	if f.node == nil {
-		return p, nil
-	}
-	if f.parent != nil {
-		p, err = f.parent.GetOffset()
-		if err != nil {
-			return p, err
-		}
-	}
-	q, err := f.node.getContentQuad(false)
-	if err != nil {
-		return p, err
-	}
-	p.X += q[0].X
-	p.Y += q[0].Y
-	return p, nil
-}

@@ -388,16 +388,24 @@ func (e Node) click() (err error) {
 	if err != nil {
 		return err
 	}
-	localPoint, err := e.frame.GetOffset()
-	if err != nil {
-		return err
+	local := point
+	if e.frame.node != nil {
+		q, err := e.frame.node.getContentQuad()
+		if err != nil {
+			return err
+		}
+		local.X -= q[0].X
+		local.Y -= q[0].Y
 	}
 	hit, err := e.eval(`function(x,y) {
 		for (let d = this.ownerDocument.elementFromPoint(x,y); d; d = d.parentNode) {
-			if (d === this) return true
+			if (d === this) {
+				d.focus({preventScroll:true,focusVisible:true})
+				return true;
+			}
 		}
 		return false
-	}`, point.X-localPoint.X, point.Y-localPoint.Y)
+	}`, local.X, local.Y)
 	if err != nil {
 		return err
 	}
@@ -418,15 +426,15 @@ func (e Node) ClickablePoint() Optional[Point] {
 		r0, r1 Quad
 		err    error
 	)
-	r0, err = e.getContentQuad(true)
+	r0, err = e.getContentQuad()
 	if err != nil {
 		return Optional[Point]{err: err}
 	}
-	_, err = e.frame.evaluate(`new Promise(r => requestAnimationFrame(() => setTimeout(r,50)))`, true)
+	_, err = e.frame.evaluate(`new Promise(requestAnimationFrame)`, true)
 	if err != nil {
 		return Optional[Point]{err: err}
 	}
-	r1, err = e.getContentQuad(true)
+	r1, err = e.getContentQuad()
 	if err != nil {
 		return Optional[Point]{err: err}
 	}
@@ -463,7 +471,7 @@ func (e Node) clip() (page.Viewport, error) {
 	return page.Viewport{}, errors.New("clip: eval result is not array")
 }
 
-func (e Node) getContentQuad(viewportCorrection bool) (Quad, error) {
+func (e Node) getContentQuad() (Quad, error) {
 	val, err := dom.GetContentQuads(e, dom.GetContentQuadsArgs{
 		ObjectId: e.GetRemoteObjectID(),
 	})
@@ -471,33 +479,15 @@ func (e Node) getContentQuad(viewportCorrection bool) (Quad, error) {
 		return nil, err
 	}
 	quads := convertQuads(val.Quads)
-	if len(quads) == 0 { // should be at least one
+	if len(quads) == 0 {
 		return nil, errors.New("node has no visible bounds")
 	}
-	// layout, err := e.frame.GetLayout().Unwrap()
-	// if err != nil {
-	// 	return nil, err
-	// }
 	for _, quad := range quads {
-		/* correction is get sub-quad of element that in viewport
-		 _______________  <- Viewport top
-		|  1 _______ 2  |
-		|   |visible|   | visible part of element
-		|__4|visible|3__| <- Viewport bottom
-		|   |invisib|   | this invisible part of element omits if viewportCorrection
-		|...............|
-		*/
-		// if viewportCorrection {
-		// 	for i := 0; i < len(quad); i++ {
-		// 		quad[i].X = math.Min(math.Max(quad[i].X, 0), float64(layout.CssLayoutViewport.ClientWidth))
-		// 		quad[i].Y = math.Min(math.Max(quad[i].Y, 0), float64(layout.CssLayoutViewport.ClientHeight))
-		// 	}
-		// }
 		if quad.Area() > 1 {
 			return quad, nil
 		}
 	}
-	return nil, errors.New("node is out of viewport")
+	return nil, errors.New("node bounds have no size")
 }
 
 func (e Node) Hover() error {
@@ -545,7 +535,7 @@ func (e Node) GetAttribute(attr string) Optional[string] {
 
 func (e Node) GetRectangle() Optional[dom.Rect] {
 	t := time.Now()
-	q, err := e.getContentQuad(false)
+	q, err := e.getContentQuad()
 	e.log(t, "GetRectangle", "quad", q, "err", err)
 	if err != nil {
 		return Optional[dom.Rect]{err: err}
