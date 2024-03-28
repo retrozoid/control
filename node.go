@@ -400,7 +400,7 @@ func (e Node) click() (err error) {
 	hit, err := e.eval(`function(x,y) {
 		for (let d = this.ownerDocument.elementFromPoint(x,y); d; d = d.parentNode) {
 			if (d === this) {
-				d.focus({preventScroll:true,focusVisible:true})
+				d.focus()
 				return true;
 			}
 		}
