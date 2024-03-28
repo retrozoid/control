@@ -288,7 +288,7 @@ func (e *Node) contentFrame() (*Frame, error) {
 }
 
 func (e Node) ScrollIntoView() error {
-	_, err := e.eval(`function(){this.scrollIntoViewIfNeeded(!0)}`)
+	_, err := e.eval(`function(){this.scrollIntoView({behavior:'instant', block:'center', inline:'center'})}`)
 	return err
 }
 
@@ -400,7 +400,6 @@ func (e Node) click() (err error) {
 	hit, err := e.eval(`function(x,y) {
 		for (let d = this.ownerDocument.elementFromPoint(x,y); d; d = d.parentNode) {
 			if (d === this) {
-				d.focus()
 				return true;
 			}
 		}
