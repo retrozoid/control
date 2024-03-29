@@ -147,13 +147,13 @@ func (t Touch) Start(x, y, radiusX, radiusY, force float64) error {
 	})
 }
 
-func (t Touch) Swipe(fromX, fromY, toX, toY float64) (err error) {
+func (t Touch) Swipe(from, to Point) (err error) {
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
-	if err = t.Start(fromX, fromY, 1, 1, 1); err != nil {
+	if err = t.Start(from.X, from.Y, 1, 1, 1); err != nil {
 		return err
 	}
-	if err = t.Move(toX, toY, 1, 1, 1); err != nil {
+	if err = t.Move(to.X, to.Y, 1, 1, 1); err != nil {
 		return err
 	}
 	if err = t.End(); err != nil {

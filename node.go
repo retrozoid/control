@@ -346,10 +346,7 @@ func (e Node) setText(value string, clearBefore bool) (err error) {
 }
 
 func (e Node) checkVisibility() bool {
-	value, err := e.eval(`function(){return this.checkVisibility({
-		opacityProperty: false,
-		visibilityProperty: true,
-	  })}`)
+	value, err := e.eval(`function(){return this.checkVisibility({opacityProperty: false, visibilityProperty: true})}`)
 	if err != nil {
 		return false
 	}

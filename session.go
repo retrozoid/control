@@ -302,7 +302,7 @@ func (s *Session) Click(point Point) error {
 }
 
 func (s *Session) Swipe(from, to Point) error {
-	return s.touch.Swipe(from.X, from.Y, to.X, to.Y)
+	return s.touch.Swipe(from, to)
 }
 
 func (s *Session) Hover(point Point) error {
