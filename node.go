@@ -288,9 +288,7 @@ func (e *Node) contentFrame() (*Frame, error) {
 }
 
 func (e Node) ScrollIntoView() error {
-	// _, err := e.eval(`function(){this.scrollIntoView({behavior:'instant', block:'center', inline:'center'})}`)
-	_, err := e.eval(`function(){this.scrollIntoViewIfNeeded()}`)
-	return err
+	return dom.ScrollIntoViewIfNeeded(e, dom.ScrollIntoViewIfNeededArgs{ObjectId: e.GetRemoteObjectID()})
 }
 
 func (e Node) GetText() Optional[string] {
