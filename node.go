@@ -9,7 +9,6 @@ import (
 	"github.com/retrozoid/control/key"
 	"github.com/retrozoid/control/protocol/dom"
 	"github.com/retrozoid/control/protocol/overlay"
-	"github.com/retrozoid/control/protocol/page"
 	"github.com/retrozoid/control/protocol/runtime"
 )
 
@@ -439,31 +438,31 @@ func (e Node) ClickablePoint() Optional[Point] {
 	return Optional[Point]{err: ErrElementUnstable}
 }
 
-func (e Node) Clip() Optional[page.Viewport] {
+func (e Node) GetBoundingClientRect() Optional[dom.Rect] {
 	t := time.Now()
-	opt := optional[page.Viewport](e.clip())
-	e.log(t, "Clip", "value", opt.value, "err", opt.err)
+	opt := optional[dom.Rect](e.getBoundingClientRect())
+	e.log(t, "GetBoundingClientRect", "value", opt.value, "err", opt.err)
 	return opt
 }
 
-func (e Node) clip() (page.Viewport, error) {
+func (e Node) getBoundingClientRect() (dom.Rect, error) {
 	value, err := e.eval(`function() {
-		const e = this.getBoundingClientRect(), t = this.ownerDocument.documentElement.getBoundingClientRect();
-		return [e.left - t.left, e.top - t.top, e.width, e.height, window.devicePixelRatio];
+		const e = this.getBoundingClientRect()
+		const t = this.ownerDocument.documentElement.getBoundingClientRect()
+		return [e.left - t.left, e.top - t.top, e.width, e.height]
 	}`)
 	if err != nil {
-		return page.Viewport{}, err
+		return dom.Rect{}, err
 	}
 	if arr, ok := value.([]any); ok {
-		return page.Viewport{
+		return dom.Rect{
 			X:      arr[0].(float64),
 			Y:      arr[1].(float64),
 			Width:  arr[2].(float64),
 			Height: arr[3].(float64),
-			Scale:  arr[4].(float64),
 		}, nil
 	}
-	return page.Viewport{}, errors.New("clip: eval result is not array")
+	return dom.Rect{}, errors.New("getBoundingClientRect: eval result is not array")
 }
 
 func (e Node) getContentQuad() (Quad, error) {

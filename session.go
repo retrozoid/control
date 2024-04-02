@@ -451,9 +451,9 @@ func (s *Session) NetworkIdle(threshold time.Duration, timeout time.Duration, in
 func (s *Session) LayerTreeIdle(threshold time.Duration, timeout time.Duration) (err error) {
 	var (
 		channel, cancel = s.Subscribe()
-		last            = time.Now().Add(threshold)
-		timer           = time.NewTimer(timeout)
 		n               = time.Now()
+		last            = n.Add(threshold)
+		timer           = time.NewTimer(timeout)
 	)
 	err = layertree.Enable(s)
 	defer func() {
