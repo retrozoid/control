@@ -402,12 +402,12 @@ func (s *Session) CaptureNetworkRequest(condition func(request *network.Request)
 	return NewDeadlineFuture(s.context, s.timeout, future)
 }
 
-func (s *Session) NetworkIdle(threshold time.Duration, timeout time.Duration) error {
+func (s *Session) NetworkIdle(threshold time.Duration, timeout time.Duration, init func()) error {
 	var (
 		channel, cancel = s.Subscribe()
-		last            = time.Now().Add(threshold)
-		timer           = time.NewTimer(timeout)
 		n               = time.Now()
+		last            = n.Add(threshold)
+		timer           = time.NewTimer(timeout)
 		requests        = 0
 		queue           = map[network.RequestId]*network.Request{}
 	)
@@ -416,7 +416,7 @@ func (s *Session) NetworkIdle(threshold time.Duration, timeout time.Duration) er
 		timer.Stop()
 		s.Log(n, "NetworkIdle", "idle_threshold", threshold.String(), "requests", requests)
 	}()
-
+	init()
 	for {
 		select {
 		case value := <-channel:
