@@ -414,7 +414,7 @@ func (s *Session) NetworkIdle(threshold time.Duration, timeout time.Duration, in
 	defer func() {
 		cancel()
 		timer.Stop()
-		s.Log(n, "NetworkIdle", "idle_threshold", threshold.String(), "requests", requests)
+		s.Log(n, "NetworkIdle", "idle_threshold", threshold.String(), "requests", requests, "queue", queue)
 	}()
 	init()
 	for {
