@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	DefaultTiming = Static{
+	DefaultTiming Timing = Static{
 		Timeout: 10 * time.Second,
 		Delay:   500 * time.Millisecond,
 	}
