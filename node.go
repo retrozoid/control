@@ -13,22 +13,16 @@ import (
 )
 
 type NoSuchSelectorError string
-type TargetOverlappedError string
 
 var (
 	ErrElementUnclickable = errors.New("element is not clickable")
 	ErrElementUnvisible   = errors.New("element is not visible")
 	ErrElementUnstable    = errors.New("element is not stable")
-	ErrElementDetached    = errors.New("element is detached")
 	ErrNoPredicateMatch   = errors.New("no predicate match")
 )
 
 func (s NoSuchSelectorError) Error() string {
 	return fmt.Sprintf("no such selector found: `%s`", string(s))
-}
-
-func (s TargetOverlappedError) Error() string {
-	return fmt.Sprintf("target is overlapped by: `%s`", string(s))
 }
 
 type Node struct {
@@ -379,7 +373,7 @@ func (e Node) click() (err error) {
 	if err = e.ScrollIntoView(); err != nil {
 		return err
 	}
-	point, err := e.ClickablePoint().Unwrap()
+	point, err := e.clickablePoint()
 	if err != nil {
 		return err
 	}
@@ -413,29 +407,33 @@ func (e Node) click() (err error) {
 }
 
 func (e Node) ClickablePoint() Optional[Point] {
+	return optional[Point](e.clickablePoint())
+}
+
+func (e Node) clickablePoint() (middle Point, err error) {
 	if !e.checkVisibility() {
-		return Optional[Point]{err: ErrElementUnvisible}
+		return middle, ErrElementUnvisible
 	}
 	var (
 		r0, r1 Quad
-		err    error
 	)
 	r0, err = e.getContentQuad()
 	if err != nil {
-		return Optional[Point]{err: err}
+		return middle, err
 	}
 	_, err = e.frame.evaluate(`new Promise(requestAnimationFrame)`, true)
 	if err != nil {
-		return Optional[Point]{err: err}
+		return middle, err
 	}
 	r1, err = e.getContentQuad()
 	if err != nil {
-		return Optional[Point]{err: err}
+		return middle, err
 	}
-	if r0.Middle().Equal(r1.Middle()) {
-		return Optional[Point]{value: r0.Middle()}
+	middle = r0.Middle()
+	if middle.Equal(r1.Middle()) {
+		return middle, nil
 	}
-	return Optional[Point]{err: ErrElementUnstable}
+	return middle, ErrElementUnstable
 }
 
 func (e Node) GetBoundingClientRect() Optional[dom.Rect] {
@@ -495,7 +493,7 @@ func (e Node) hover() error {
 	if err := e.ScrollIntoView(); err != nil {
 		return err
 	}
-	p, err := e.ClickablePoint().Unwrap()
+	p, err := e.clickablePoint()
 	if err != nil {
 		return err
 	}
@@ -529,10 +527,15 @@ func (e Node) GetAttribute(attr string) Optional[string] {
 
 func (e Node) GetRectangle() Optional[dom.Rect] {
 	t := time.Now()
+	opt := optional[dom.Rect](e.getViewportRectangle())
+	e.log(t, "GetRectangle", "quad", opt.value, "err", opt.err)
+	return opt
+}
+
+func (e Node) getViewportRectangle() (dom.Rect, error) {
 	q, err := e.getContentQuad()
-	e.log(t, "GetRectangle", "quad", q, "err", err)
 	if err != nil {
-		return Optional[dom.Rect]{err: err}
+		return dom.Rect{}, err
 	}
 	rect := dom.Rect{
 		X:      q[0].X,
@@ -540,7 +543,7 @@ func (e Node) GetRectangle() Optional[dom.Rect] {
 		Width:  q[1].X - q[0].X,
 		Height: q[3].Y - q[0].Y,
 	}
-	return Optional[dom.Rect]{value: rect}
+	return rect, nil
 }
 
 func (e Node) SelectByValues(values ...string) error {

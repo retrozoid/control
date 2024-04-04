@@ -7,9 +7,7 @@ import (
 	"time"
 
 	"github.com/retrozoid/control/protocol/common"
-	"github.com/retrozoid/control/protocol/dom"
 	"github.com/retrozoid/control/protocol/page"
-	"github.com/retrozoid/control/protocol/runtime"
 )
 
 const (
@@ -138,32 +136,8 @@ func (f Frame) Evaluate(expression string, awaitPromise bool) Optional[any] {
 	return Optional[any]{value: value, err: err}
 }
 
-func (f Frame) resolveNode(backendNodeId dom.BackendNodeId) (runtime.RemoteObjectId, error) {
-	value, err := dom.ResolveNode(f, dom.ResolveNodeArgs{
-		BackendNodeId: backendNodeId,
-	})
-	if err != nil {
-		return "", err
-	}
-	return value.Object.ObjectId, nil
-}
-
-func (f Frame) getNodeForLocation(p Point) (dom.BackendNodeId, error) {
-	value, err := dom.GetNodeForLocation(f, dom.GetNodeForLocationArgs{
-		X:                         int(p.X),
-		Y:                         int(p.Y),
-		IncludeUserAgentShadowDOM: true,
-		IgnorePointerEventsNone:   true,
-	})
-	if err != nil {
-		return 0, err
-	}
-	return value.BackendNodeId, nil
-}
-
 func (f Frame) Document() Optional[*Node] {
-	value, err := f.evaluate(document, true)
-	opt := optional[*Node](value, err)
+	opt := optional[*Node](f.evaluate(document, true))
 	if opt.err == nil && opt.value == nil {
 		opt.err = NoSuchSelectorError(document)
 	}

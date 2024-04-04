@@ -277,17 +277,6 @@ func (s *Session) Close() error {
 	return s.CloseTarget(s.targetID)
 }
 
-func (s *Session) getDocument() (*dom.Node, error) {
-	value, err := dom.GetDocument(s, dom.GetDocumentArgs{
-		Depth:  1,
-		Pierce: false,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return value.Root, nil
-}
-
 func (s *Session) CloseTarget(id target.TargetID) (err error) {
 	err = target.CloseTarget(s, target.CloseTargetArgs{TargetId: id})
 	/* Target.detachedFromTarget event may come before the response of CloseTarget call */
@@ -403,20 +392,22 @@ func (s *Session) CaptureNetworkRequest(condition func(request *network.Request)
 }
 
 func (s *Session) NetworkIdle(threshold time.Duration, timeout time.Duration, init func()) error {
+	var channel, cancel = s.Subscribe()
+	if init != nil {
+		init()
+	}
 	var (
-		channel, cancel = s.Subscribe()
-		n               = time.Now()
-		last            = n.Add(threshold)
-		timer           = time.NewTimer(timeout)
-		requests        = 0
-		queue           = map[network.RequestId]*network.Request{}
+		timer    = time.NewTimer(timeout)
+		n        = time.Now()
+		last     = n.Add(threshold)
+		requests = 0
+		queue    = map[network.RequestId]*network.Request{}
 	)
 	defer func() {
 		cancel()
 		timer.Stop()
 		s.Log(n, "NetworkIdle", "idle_threshold", threshold.String(), "requests", requests, "queue", queue)
 	}()
-	init()
 	for {
 		select {
 		case value := <-channel:

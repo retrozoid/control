@@ -27,8 +27,19 @@ func castTo[T any](value any, err error) (T, error) {
 }
 
 func optional[T any](value any, err error) Optional[T] {
-	tval, terr := castTo[T](value, err)
-	return Optional[T]{value: tval, err: terr}
+	var nilValue T
+	if err != nil {
+		return Optional[T]{err: err}
+	}
+	if value == nil {
+		return Optional[T]{}
+	}
+	switch typed := value.(type) {
+	case T:
+		return Optional[T]{value: typed}
+	default:
+		return Optional[T]{err: fmt.Errorf("can't cast %s to %s", reflect.TypeOf(value), reflect.TypeOf(nilValue))}
+	}
 }
 
 func (may Optional[T]) Unwrap() (T, error) {

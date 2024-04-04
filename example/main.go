@@ -72,7 +72,7 @@ func main() {
 	})
 	log.Println(val)
 
-	session.Frame.Query(`.pager__count-pages`).Value().Clip().Value()
+	session.Frame.Query(`.pager__count-pages`).Value().GetBoundingClientRect().Value()
 
 	retry.Func(func() error {
 		return session.Frame.Query(`.pager__count-pages`).Value().Click()

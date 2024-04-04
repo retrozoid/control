@@ -114,7 +114,6 @@ func (f *Frame) unserialize(value *runtime.RemoteObject) (any, error) {
 		}
 
 	case "nodelist":
-		/* It returns the head of linked nodes list (1th element), not array */
 		if value.Description == "NodeList(0)" {
 			return nil, nil
 		}
