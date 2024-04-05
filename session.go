@@ -12,7 +12,6 @@ import (
 	"github.com/retrozoid/control/protocol/browser"
 	"github.com/retrozoid/control/protocol/common"
 	"github.com/retrozoid/control/protocol/dom"
-	"github.com/retrozoid/control/protocol/layertree"
 	"github.com/retrozoid/control/protocol/network"
 	"github.com/retrozoid/control/protocol/overlay"
 	"github.com/retrozoid/control/protocol/page"
@@ -156,7 +155,6 @@ func NewSession(transport *cdp.Transport, targetID target.TargetID) (*Session, e
 			cancel(err)
 		}
 	}()
-
 	if err = page.Enable(session); err != nil {
 		return nil, err
 	}
@@ -433,40 +431,6 @@ func (s *Session) NetworkIdle(threshold time.Duration, timeout time.Duration, in
 			return ErrNetworkIdleReachedTimeout
 		default:
 			if time.Since(last) > threshold && len(queue) == 0 {
-				return nil
-			}
-		}
-	}
-}
-
-func (s *Session) LayerTreeIdle(threshold time.Duration, timeout time.Duration) (err error) {
-	var (
-		channel, cancel = s.Subscribe()
-		n               = time.Now()
-		last            = n.Add(threshold)
-		timer           = time.NewTimer(timeout)
-	)
-	err = layertree.Enable(s)
-	defer func() {
-		cancel()
-		timer.Stop()
-		err = layertree.Disable(s)
-		s.Log(n, "LayerTreeIdle", "idle_threshold", threshold.String(), "error", err)
-	}()
-	if err != nil {
-		return err
-	}
-	for {
-		select {
-		case value := <-channel:
-			switch value.Method {
-			case "LayerTree.layerPainted", "LayerTree.layerTreeDidChange":
-				last = time.Now()
-			}
-		case <-timer.C:
-			return ErrLayerTreeIdleReachedTimeout
-		default:
-			if time.Since(last) > threshold {
 				return nil
 			}
 		}
