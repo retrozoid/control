@@ -12,12 +12,17 @@ import (
 	"github.com/retrozoid/control/protocol/runtime"
 )
 
+type NoSuchSelectorError string
+
+func (s NoSuchSelectorError) Error() string {
+	return fmt.Sprintf("no such selector found: `%s`", string(s))
+}
+
 var (
 	ErrElementUnclickable = errors.New("element is not clickable")
 	ErrElementUnvisible   = errors.New("element is not visible")
 	ErrElementUnstable    = errors.New("element is not stable")
 	ErrNoPredicateMatch   = errors.New("no predicate match")
-	ErrNoSuchSelector     = errors.New("no such selector found")
 )
 
 type Node struct {
@@ -234,7 +239,7 @@ func (e Node) query(cssSelector string) (*Node, error) {
 		return nil, err
 	}
 	if value == nil {
-		return nil, ErrNoSuchSelector
+		return nil, NoSuchSelectorError(cssSelector)
 	}
 	node := value.(*Node)
 	if e.frame.session.highlightEnabled {
@@ -249,7 +254,7 @@ func (e Node) QueryAll(cssSelector string) Optional[*NodeList] {
 	value, err := e.eval(`function(s){return this.querySelectorAll(s)}`, cssSelector)
 	opt := optional[*NodeList](value, err)
 	if opt.err == nil && opt.value == nil {
-		opt.err = ErrNoSuchSelector
+		opt.err = NoSuchSelectorError(cssSelector)
 	}
 	e.log(t, "QueryAll", "cssSelector", cssSelector, "err", opt.err)
 	return opt
