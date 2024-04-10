@@ -18,6 +18,8 @@ var DefaultDialer = websocket.Dialer{
 	Proxy:            http.ProxyFromEnvironment,
 }
 
+var ErrGracefullyClosed = errors.New("gracefully closed")
+
 type Transport struct {
 	context context.Context
 	cancel  func(error)
@@ -91,7 +93,7 @@ func (t *Transport) Close() error {
 	if err != nil {
 		return err
 	}
-	t.cancel(errors.New("gracefully closed"))
+	t.cancel(ErrGracefullyClosed)
 	return t.conn.Close()
 }
 
@@ -123,17 +125,15 @@ func (t *Transport) Send(request *Request) ResponseFuture {
 		return future
 	}
 	t.mutex.Lock()
+	defer t.mutex.Unlock()
 	seq := t.seq
 	t.seq++
 	t.pending[seq] = resolver
 	request.ID = seq
 	t.Log(slog.LevelDebug, "send ->", "request", request.String())
-	t.mutex.Unlock()
 
 	if err := t.conn.WriteJSON(request); err != nil {
-		t.mutex.Lock()
 		delete(t.pending, seq)
-		t.mutex.Unlock()
 		resolver.Reject(err)
 	}
 	return future

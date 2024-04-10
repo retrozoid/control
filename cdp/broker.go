@@ -2,7 +2,7 @@ package cdp
 
 var BrokerChannelSize = 50000
 
-type subchan struct {
+type subscriber struct {
 	sessionID string
 	channel   chan Message
 }
@@ -10,7 +10,7 @@ type subchan struct {
 type broker struct {
 	cancel  chan struct{}
 	publish chan Message
-	sub     chan subchan
+	sub     chan subscriber
 	unsub   chan chan Message
 }
 
@@ -18,18 +18,18 @@ func makeBroker() broker {
 	return broker{
 		cancel:  make(chan struct{}),
 		publish: make(chan Message),
-		sub:     make(chan subchan),
+		sub:     make(chan subscriber),
 		unsub:   make(chan chan Message),
 	}
 }
 
 func (b broker) run() {
-	var value = map[chan Message]string{}
+	var value = map[chan Message]subscriber{}
 	for {
 		select {
 
-		case subchan := <-b.sub:
-			value[subchan.channel] = subchan.sessionID
+		case sub := <-b.sub:
+			value[sub.channel] = sub
 
 		case channel := <-b.unsub:
 			if _, ok := value[channel]; ok {
@@ -47,23 +47,22 @@ func (b broker) run() {
 			return
 
 		case message := <-b.publish:
-			for msgCh, sessionID := range value {
-				if message.SessionID == "" || sessionID == "" || message.SessionID == sessionID {
-					msgCh <- message
+			for _, subscriber := range value {
+				if message.SessionID == "" || subscriber.sessionID == "" || message.SessionID == subscriber.sessionID {
+					subscriber.channel <- message
 				}
 			}
-
 		}
 	}
 }
 
 func (b broker) Subscribe(sessionID string) chan Message {
-	schan := subchan{
+	sub := subscriber{
 		sessionID: sessionID,
 		channel:   make(chan Message, BrokerChannelSize),
 	}
-	b.sub <- schan
-	return schan.channel
+	b.sub <- sub
+	return sub.channel
 }
 
 func (b broker) Unsubscribe(value chan Message) {

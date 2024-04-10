@@ -10,6 +10,21 @@ import (
 	"github.com/retrozoid/control/protocol/page"
 )
 
+type LifecycleEventType string
+
+const (
+	LifecycleDOMContentLoaded              LifecycleEventType = "DOMContentLoaded"
+	LifecycleIdleNetwork                   LifecycleEventType = "networkIdle"
+	LifecycleFirstContentfulPaint          LifecycleEventType = "firstContentfulPaint"
+	LifecycleFirstMeaningfulPaint          LifecycleEventType = "firstMeaningfulPaint"
+	LifecycleFirstMeaningfulPaintCandidate LifecycleEventType = "firstMeaningfulPaintCandidate"
+	LifecycleFirstPaint                    LifecycleEventType = "firstPaint"
+	LifecycleFirstTextPaint                LifecycleEventType = "firstTextPaint"
+	LifecycleInit                          LifecycleEventType = "init"
+	LifecycleLoad                          LifecycleEventType = "load"
+	LifecycleNetworkAlmostIdle             LifecycleEventType = "networkAlmostIdle"
+)
+
 const (
 	truncateLongStringLen = 1024
 	document              = "document"
@@ -30,6 +45,10 @@ type Frame struct {
 
 func (f Frame) GetSession() *Session {
 	return f.session
+}
+
+func (f Frame) GetID() common.FrameId {
+	return f.id
 }
 
 func (f Frame) executionContextID() string {

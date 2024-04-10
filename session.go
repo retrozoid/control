@@ -158,6 +158,9 @@ func NewSession(transport *cdp.Transport, targetID target.TargetID) (*Session, e
 	if err = page.Enable(session); err != nil {
 		return nil, err
 	}
+	if err = page.SetLifecycleEventsEnabled(session, page.SetLifecycleEventsEnabledArgs{Enabled: true}); err != nil {
+		return nil, err
+	}
 	if err = runtime.Enable(session); err != nil {
 		return nil, err
 	}
