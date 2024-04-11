@@ -83,10 +83,6 @@ func (f Frame) Navigate(url string) error {
 }
 
 func (f Frame) navigate(url string) error {
-	future := Subscribe(f.session, "Page.loadEventFired", func(_ page.LoadEventFired) bool {
-		return true
-	})
-	defer future.Cancel()
 	nav, err := page.Navigate(f, page.NavigateArgs{
 		Url:     url,
 		FrameId: f.id,
@@ -100,35 +96,17 @@ func (f Frame) navigate(url string) error {
 	if nav.LoaderId == "" {
 		return nil
 	}
-	if _, err = future.Get(); err != nil {
-		return errors.Join(err, errors.New("navigation did not complete"))
-	}
 	return nil
 }
 
 func (f Frame) Reload(ignoreCache bool, scriptToEvaluateOnLoad string) error {
 	now := time.Now()
-	err := f.reload(ignoreCache, scriptToEvaluateOnLoad)
-	f.Log(now, "Reload", "ignoreCache", ignoreCache, "scriptToEvaluateOnLoad", scriptToEvaluateOnLoad, "err", err)
-	return err
-}
-
-func (f Frame) reload(ignoreCache bool, scriptToEvaluateOnLoad string) error {
-	future := Subscribe(f.session, "Page.loadEventFired", func(_ page.LoadEventFired) bool {
-		return true
-	})
-	defer future.Cancel()
 	err := page.Reload(f, page.ReloadArgs{
 		IgnoreCache:            ignoreCache,
 		ScriptToEvaluateOnLoad: scriptToEvaluateOnLoad,
 	})
-	if err != nil {
-		return err
-	}
-	if _, err = future.Get(); err != nil {
-		return errors.Join(err, errors.New("reload did not complete"))
-	}
-	return nil
+	f.Log(now, "Reload", "ignoreCache", ignoreCache, "scriptToEvaluateOnLoad", scriptToEvaluateOnLoad, "err", err)
+	return err
 }
 
 func truncate(value string, length int) string {

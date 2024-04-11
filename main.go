@@ -76,8 +76,10 @@ func (f deadlineFuture[T]) Cancel() {
 }
 
 func Subscribe[T any](s *Session, method string, filter func(T) bool) Future[T] {
-	channel, cancel := s.Subscribe()
-	promise, future := cdp.NewPromise[T](cancel)
+	var (
+		channel, cancel = s.Subscribe()
+		promise, future = cdp.NewPromise[T](cancel)
+	)
 	go func() {
 		for value := range channel {
 			if value.Method == method {
