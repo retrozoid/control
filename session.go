@@ -27,10 +27,9 @@ var (
 const Blank = "about:blank"
 
 var (
-	ErrTargetDestroyed             error = errors.New("target destroyed")
-	ErrTargetDetached              error = errors.New("session detached from target")
-	ErrNetworkIdleReachedTimeout   error = errors.New("session network idle reached timeout")
-	ErrLayerTreeIdleReachedTimeout error = errors.New("session layer tree idle reached timeout")
+	ErrTargetDestroyed           error = errors.New("target destroyed")
+	ErrTargetDetached            error = errors.New("session detached from target")
+	ErrNetworkIdleReachedTimeout error = errors.New("session network idle reached timeout")
 )
 
 type TargetCrashedError []byte
@@ -413,6 +412,9 @@ func (s *Session) NetworkIdle(threshold time.Duration, timeout time.Duration, in
 		select {
 		case value := <-channel:
 			switch value.Method {
+
+			case "Network.requestWillBeSentExtraInfo":
+				last = time.Now()
 
 			case "Network.requestWillBeSent":
 				willBeSent := mustUnmarshal[network.RequestWillBeSent](value)

@@ -30,6 +30,8 @@ const (
 	document              = "document"
 )
 
+var ErrNavigateNoLoader = errors.New("navigation to the same address")
+
 type Queryable interface {
 	Query(string) Optional[*Node]
 	QueryAll(string) Optional[*NodeList]
@@ -91,10 +93,13 @@ func (f Frame) navigate(url string) error {
 		return err
 	}
 	if nav.ErrorText != "" {
+		if nav.ErrorText == "net::ERR_HTTP_RESPONSE_CODE_FAILURE" {
+			return nil
+		}
 		return errors.New(nav.ErrorText)
 	}
 	if nav.LoaderId == "" {
-		return nil
+		return ErrNavigateNoLoader
 	}
 	return nil
 }
