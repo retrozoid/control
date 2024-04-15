@@ -122,9 +122,21 @@ func truncate(value string, length int) string {
 	return value
 }
 
-func (f Frame) Evaluate(expression string, awaitPromise bool) Optional[any] {
+func (f Frame) RequestIdleCallback(expression string, awaitPromise bool) Optional[any] {
 	now := time.Now()
 	value, err := f.requestIdleCallback(expression, awaitPromise)
+	f.Log(now, "RequestIdleCallback",
+		"expression", truncate(expression, truncateLongStringLen),
+		"awaitPromise", awaitPromise,
+		"value", truncate(fmt.Sprint(value), truncateLongStringLen),
+		"err", err,
+	)
+	return Optional[any]{value: value, err: err}
+}
+
+func (f Frame) Evaluate(expression string, awaitPromise bool) Optional[any] {
+	now := time.Now()
+	value, err := f.evaluate(expression, awaitPromise)
 	f.Log(now, "Evaluate",
 		"expression", truncate(expression, truncateLongStringLen),
 		"awaitPromise", awaitPromise,
