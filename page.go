@@ -27,7 +27,6 @@ const (
 
 const (
 	truncateLongStringLen = 1024
-	document              = "document"
 )
 
 var ErrNavigateNoLoader = errors.New("navigation to the same address")
@@ -93,9 +92,6 @@ func (f Frame) navigate(url string) error {
 		return err
 	}
 	if nav.ErrorText != "" {
-		if nav.ErrorText == "net::ERR_HTTP_RESPONSE_CODE_FAILURE" {
-			return nil
-		}
 		return errors.New(nav.ErrorText)
 	}
 	if nav.LoaderId == "" {
@@ -139,12 +135,12 @@ func (f Frame) Evaluate(expression string, awaitPromise bool) Optional[any] {
 }
 
 func (f Frame) Document() Optional[*Node] {
-	opt := optional[*Node](f.evaluate(document, true))
+	opt := optional[*Node](f.requestIdleCallback("return document"))
 	if opt.err == nil && opt.value == nil {
-		opt.err = NoSuchSelectorError(document)
+		opt.err = NoSuchSelectorError("document")
 	}
 	if opt.value != nil {
-		opt.value.requestedSelector = document
+		opt.value.requestedSelector = "document"
 	}
 	return opt
 }

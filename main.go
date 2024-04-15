@@ -51,10 +51,10 @@ type Future[T any] interface {
 	Cancel()
 }
 
-func NewDeadlineFuture[T any](ctx context.Context, deadline time.Duration, future cdp.Future[T]) Future[T] {
+func NewSessionContextFuture[T any](session *Session, future cdp.Future[T]) Future[T] {
 	return deadlineFuture[T]{
-		context:  ctx,
-		deadline: deadline,
+		context:  session.context,
+		deadline: session.timeout,
 		future:   future,
 	}
 }
@@ -96,5 +96,5 @@ func Subscribe[T any](s *Session, method string, filter func(T) bool) Future[T] 
 			}
 		}
 	}()
-	return NewDeadlineFuture(s.context, s.timeout, future)
+	return NewSessionContextFuture(s, future)
 }

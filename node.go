@@ -421,7 +421,7 @@ func (e Node) clickablePoint() (middle Point, err error) {
 	if err != nil {
 		return middle, err
 	}
-	_, err = e.frame.evaluate(`new Promise(requestIdleCallback)`, true)
+	_, err = e.frame.requestIdleCallback("")
 	if err != nil {
 		return middle, err
 	}
