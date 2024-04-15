@@ -124,7 +124,7 @@ func truncate(value string, length int) string {
 
 func (f Frame) Evaluate(expression string, awaitPromise bool) Optional[any] {
 	now := time.Now()
-	value, err := f.evaluate(expression, awaitPromise)
+	value, err := f.requestIdleCallback(expression, awaitPromise)
 	f.Log(now, "Evaluate",
 		"expression", truncate(expression, truncateLongStringLen),
 		"awaitPromise", awaitPromise,
@@ -135,7 +135,7 @@ func (f Frame) Evaluate(expression string, awaitPromise bool) Optional[any] {
 }
 
 func (f Frame) Document() Optional[*Node] {
-	opt := optional[*Node](f.requestIdleCallback("return document"))
+	opt := optional[*Node](f.requestIdleCallback("return document", true))
 	if opt.err == nil && opt.value == nil {
 		opt.err = NoSuchSelectorError("document")
 	}

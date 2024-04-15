@@ -159,8 +159,8 @@ func (f Frame) toCallArgument(args ...any) (arguments []*runtime.CallArgument) {
 	return
 }
 
-func (f Frame) requestIdleCallback(expression string) (any, error) {
-	return f.evaluate(fmt.Sprintf("new Promise(r=>requestIdleCallback(()=>r(function(){%s}())))", expression), true)
+func (f Frame) requestIdleCallback(expression string, awaitPromise bool) (any, error) {
+	return f.evaluate(fmt.Sprintf("new Promise(r=>requestIdleCallback(()=>r(function(){%s}())))", expression), awaitPromise)
 }
 
 func (f Frame) evaluate(expression string, awaitPromise bool) (any, error) {
