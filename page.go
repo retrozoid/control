@@ -147,7 +147,7 @@ func (f Frame) Evaluate(expression string, awaitPromise bool) Optional[any] {
 }
 
 func (f Frame) Document() Optional[*Node] {
-	opt := optional[*Node](f.requestIdleCallback("return document", true))
+	opt := optional[*Node](f.evaluate("document", true))
 	if opt.err == nil && opt.value == nil {
 		opt.err = NoSuchSelectorError("document")
 	}
