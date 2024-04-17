@@ -41,6 +41,15 @@ func (op Optional[T]) Value() T {
 	return op.value
 }
 
+func (op Optional[T]) Then(f func(T) error) error {
+	if op.err == nil {
+		if err := f(op.value); err != nil {
+			return err
+		}
+	}
+	return op.err
+}
+
 func (op Optional[T]) IfPresent(f func(T)) {
 	if op.err == nil {
 		f(op.value)

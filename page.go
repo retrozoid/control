@@ -2,9 +2,6 @@ package control
 
 import (
 	"errors"
-	"fmt"
-	"strings"
-	"time"
 
 	"github.com/retrozoid/control/protocol/common"
 	"github.com/retrozoid/control/protocol/page"
@@ -71,19 +68,12 @@ func (f *Frame) Parent() *Frame {
 	return f.parent
 }
 
-func (f Frame) Log(t time.Time, msg string, args ...any) {
+func (f Frame) Log(msg string, args ...any) {
 	args = append(args, "frameId", f.id)
-	f.session.Log(t, msg, args...)
+	f.session.Log(msg, args...)
 }
 
 func (f Frame) Navigate(url string) error {
-	now := time.Now()
-	err := f.navigate(url)
-	f.Log(now, "Navigate", "url", url, "err", err)
-	return err
-}
-
-func (f Frame) navigate(url string) error {
 	nav, err := page.Navigate(f, page.NavigateArgs{
 		Url:     url,
 		FrameId: f.id,
@@ -101,49 +91,18 @@ func (f Frame) navigate(url string) error {
 }
 
 func (f Frame) Reload(ignoreCache bool, scriptToEvaluateOnLoad string) error {
-	now := time.Now()
-	err := page.Reload(f, page.ReloadArgs{
+	return page.Reload(f, page.ReloadArgs{
 		IgnoreCache:            ignoreCache,
 		ScriptToEvaluateOnLoad: scriptToEvaluateOnLoad,
 	})
-	f.Log(now, "Reload", "ignoreCache", ignoreCache, "scriptToEvaluateOnLoad", scriptToEvaluateOnLoad, "err", err)
-	return err
-}
-
-func truncate(value string, length int) string {
-	if len(value) > length {
-		var b = strings.Builder{}
-		b.WriteString(value[:length])
-		b.WriteString(" (truncated ")
-		b.WriteString(fmt.Sprint(len(value[length:])))
-		b.WriteString(" bytes)")
-		return b.String()
-	}
-	return value
 }
 
 func (f Frame) RequestIdleCallback(expression string, awaitPromise bool) Optional[any] {
-	now := time.Now()
-	value, err := f.requestIdleCallback(expression, awaitPromise)
-	f.Log(now, "RequestIdleCallback",
-		"expression", truncate(expression, truncateLongStringLen),
-		"awaitPromise", awaitPromise,
-		"value", truncate(fmt.Sprint(value), truncateLongStringLen),
-		"err", err,
-	)
-	return Optional[any]{value: value, err: err}
+	return optional[any](f.requestIdleCallback(expression, awaitPromise))
 }
 
 func (f Frame) Evaluate(expression string, awaitPromise bool) Optional[any] {
-	now := time.Now()
-	value, err := f.evaluate(expression, awaitPromise)
-	f.Log(now, "Evaluate",
-		"expression", truncate(expression, truncateLongStringLen),
-		"awaitPromise", awaitPromise,
-		"value", truncate(fmt.Sprint(value), truncateLongStringLen),
-		"err", err,
-	)
-	return Optional[any]{value: value, err: err}
+	return optional[any](f.evaluate(expression, awaitPromise))
 }
 
 func (f Frame) Document() Optional[*Node] {

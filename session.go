@@ -65,9 +65,9 @@ func (s *Session) Transport() *cdp.Transport {
 	return s.transport
 }
 
-func (s *Session) Log(t time.Time, msg string, args ...any) {
+func (s *Session) Log(msg string, args ...any) {
 	level := slog.LevelInfo
-	args = append(args, "sessionId", s.sessionID, "duration", time.Since(t).String())
+	args = append(args, "sessionId", s.sessionID)
 	for n := range args {
 		switch a := args[n].(type) {
 		case error:
@@ -318,10 +318,7 @@ func (s *Session) GetNavigationEntry() Optional[page.NavigationEntry] {
 }
 
 func (s *Session) GetCurrentURL() Optional[string] {
-	now := time.Now()
-	opt := optional[string](s.getCurrentURL())
-	s.Log(now, "GetCurrentURL", "value", opt.value, "err", opt.err)
-	return opt
+	return optional[string](s.getCurrentURL())
 }
 
 func (s *Session) getCurrentURL() (string, error) {
@@ -333,13 +330,6 @@ func (s *Session) getCurrentURL() (string, error) {
 }
 
 func (s *Session) NavigateHistory(delta int) error {
-	now := time.Now()
-	err := s.navigateHistory(delta)
-	s.Log(now, "NavigateHistory", "delta", delta, "err", err)
-	return err
-}
-
-func (s *Session) navigateHistory(delta int) error {
 	val, err := page.GetNavigationHistory(s)
 	if err != nil {
 		return err

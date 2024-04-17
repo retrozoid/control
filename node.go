@@ -200,37 +200,25 @@ func (e Node) dispatchEvents(events ...any) error {
 	return err
 }
 
-func (e Node) log(t time.Time, msg string, args ...any) {
+func (e Node) Log(msg string, args ...any) {
 	args = append(args, "self", e.requestedSelector)
-	e.frame.Log(t, msg, args...)
+	e.frame.Log(msg, args...)
 }
 
 func (e Node) HasClass(class string) Optional[bool] {
-	t := time.Now()
-	value, err := e.eval(`function(c){return this.classList.contains(c)}`)
-	e.log(t, "HasClass", "class", class, "value", value, "err", err)
-	return optional[bool](value, err)
+	return optional[bool](e.eval(`function(c){return this.classList.contains(c)}`))
 }
 
 func (e Node) CallFunctionOn(function string, args ...any) Optional[any] {
-	t := time.Now()
-	value, err := e.eval(function, args...)
-	e.log(t, "CallFunctionOn", "function", function, "args", args, "value", value, "err", err)
-	return optional[any](value, err)
+	return optional[any](e.eval(function, args...))
 }
 
 func (e Node) AsyncCallFunctionOn(function string, args ...any) Optional[RemoteObject] {
-	t := time.Now()
-	value, err := e.asyncEval(function, args...)
-	e.log(t, "AsyncCallFunctionOn", "function", function, "args", args, "value", value, "err", err)
-	return optional[RemoteObject](value, err)
+	return optional[RemoteObject](e.asyncEval(function, args...))
 }
 
 func (e Node) Query(cssSelector string) Optional[*Node] {
-	t := time.Now()
-	opt := optional[*Node](e.query(cssSelector))
-	e.log(t, "Query", "cssSelector", cssSelector, "err", opt.err)
-	return opt
+	return optional[*Node](e.query(cssSelector))
 }
 
 func (e Node) query(cssSelector string) (*Node, error) {
@@ -250,21 +238,19 @@ func (e Node) query(cssSelector string) (*Node, error) {
 }
 
 func (e Node) QueryAll(cssSelector string) Optional[*NodeList] {
-	t := time.Now()
+	return optional[*NodeList](e.queryAll(cssSelector))
+}
+
+func (e Node) queryAll(cssSelector string) (*NodeList, error) {
 	value, err := e.eval(`function(s){return this.querySelectorAll(s)}`, cssSelector)
-	opt := optional[*NodeList](value, err)
-	if opt.err == nil && opt.value == nil {
-		opt.err = NoSuchSelectorError(cssSelector)
+	if err == nil && value == nil {
+		return nil, NoSuchSelectorError(cssSelector)
 	}
-	e.log(t, "QueryAll", "cssSelector", cssSelector, "err", opt.err)
-	return opt
+	return value.(*NodeList), nil
 }
 
 func (e Node) ContentFrame() Optional[*Frame] {
-	t := time.Now()
-	opt := optional[*Frame](e.contentFrame())
-	e.log(t, "ContentFrame", "value", opt.value, "err", opt.err)
-	return opt
+	return optional[*Frame](e.contentFrame())
 }
 
 func (e *Node) contentFrame() (*Frame, error) {
@@ -285,10 +271,7 @@ func (e Node) ScrollIntoView() error {
 }
 
 func (e Node) GetText() Optional[string] {
-	t := time.Now()
-	value, err := e.eval(`function(){return ('INPUT'===this.nodeName||'TEXTAREA'===this.nodeName)?this.value:this.innerText}`)
-	e.log(t, "GetText", "content", value, "err", err)
-	return optional[string](value, err)
+	return optional[string](e.eval(`function(){return ('INPUT'===this.nodeName||'TEXTAREA'===this.nodeName)?this.value:this.innerText}`))
 }
 
 func (e Node) Focus() error {
@@ -309,17 +292,11 @@ func (e Node) clearInput() error {
 }
 
 func (e Node) InsertText(value string) error {
-	t := time.Now()
-	err := e.setText(value, false)
-	e.log(t, "InsertText", "text", value, "err", err)
-	return err
+	return e.setText(value, false)
 }
 
 func (e Node) SetText(value string) error {
-	t := time.Now()
-	err := e.setText(value, true)
-	e.log(t, "SetText", "value", value, "err", err)
-	return err
+	return e.setText(value, true)
 }
 
 func (e Node) setText(value string, clearBefore bool) (err error) {
@@ -337,7 +314,7 @@ func (e Node) setText(value string, clearBefore bool) (err error) {
 	return nil
 }
 
-func (e Node) checkVisibility() bool {
+func (e Node) CheckVisibility() bool {
 	value, err := e.eval(`function(){return this.checkVisibility({opacityProperty: false, visibilityProperty: true})}`)
 	if err != nil {
 		return false
@@ -345,31 +322,14 @@ func (e Node) checkVisibility() bool {
 	return value.(bool)
 }
 
-func (e Node) Visibility() bool {
-	t := time.Now()
-	value := e.checkVisibility()
-	e.log(t, "Visibility", "value", value)
-	return value
-}
-
 func (e Node) Upload(files ...string) error {
-	t := time.Now()
-	err := dom.SetFileInputFiles(e, dom.SetFileInputFilesArgs{
+	return dom.SetFileInputFiles(e, dom.SetFileInputFilesArgs{
 		ObjectId: e.GetRemoteObjectID(),
 		Files:    files,
 	})
-	e.log(t, "Upload", "files", files, "err", err)
-	return err
 }
 
-func (e Node) Click() error {
-	t := time.Now()
-	err := e.click()
-	e.log(t, "Click", "err", err)
-	return err
-}
-
-func (e Node) click() (err error) {
+func (e Node) Click() (err error) {
 	if err = e.ScrollIntoView(); err != nil {
 		return err
 	}
@@ -411,7 +371,7 @@ func (e Node) ClickablePoint() Optional[Point] {
 }
 
 func (e Node) clickablePoint() (middle Point, err error) {
-	if !e.checkVisibility() {
+	if !e.CheckVisibility() {
 		return middle, ErrElementUnvisible
 	}
 	var (
@@ -437,10 +397,7 @@ func (e Node) clickablePoint() (middle Point, err error) {
 }
 
 func (e Node) GetBoundingClientRect() Optional[dom.Rect] {
-	t := time.Now()
-	opt := optional[dom.Rect](e.getBoundingClientRect())
-	e.log(t, "GetBoundingClientRect", "value", opt.value, "err", opt.err)
-	return opt
+	return optional[dom.Rect](e.getBoundingClientRect())
 }
 
 func (e Node) getBoundingClientRect() (dom.Rect, error) {
@@ -483,13 +440,6 @@ func (e Node) getContentQuad() (Quad, error) {
 }
 
 func (e Node) Hover() error {
-	t := time.Now()
-	err := e.hover()
-	e.log(t, "Hover", "err", err)
-	return err
-}
-
-func (e Node) hover() error {
 	if err := e.ScrollIntoView(); err != nil {
 		return err
 	}
@@ -505,31 +455,20 @@ func (e Node) GetComputedStyle(style string, pseudo string) Optional[string] {
 	if pseudo != "" {
 		pseudoVar = pseudo
 	}
-	t := time.Now()
-	value, err := e.eval(`function(p,s){return getComputedStyle(this, p)[s]}`, pseudoVar, style)
-	e.log(t, "GetComputedStyle", "style", style, "pseudo", pseudo, "value", value, "err", err)
-	return optional[string](value, err)
+	return optional[string](e.eval(`function(p,s){return getComputedStyle(this, p)[s]}`, pseudoVar, style))
 }
 
 func (e Node) SetAttribute(attr, value string) error {
-	t := time.Now()
 	_, err := e.eval(`function(a,v){this.setAttribute(a,v)}`, attr, value)
-	e.log(t, "SetAttribute", "attr", attr, "attr_value", value, "err", err)
 	return err
 }
 
 func (e Node) GetAttribute(attr string) Optional[string] {
-	t := time.Now()
-	value, err := e.eval(`function(a){return this.getAttribute(a)}`, attr)
-	e.log(t, "GetAttribute", "attr", attr, "value", value, "err", err)
-	return optional[string](value, err)
+	return optional[string](e.eval(`function(a){return this.getAttribute(a)}`, attr))
 }
 
 func (e Node) GetRectangle() Optional[dom.Rect] {
-	t := time.Now()
-	opt := optional[dom.Rect](e.getViewportRectangle())
-	e.log(t, "GetRectangle", "quad", opt.value, "err", opt.err)
-	return opt
+	return optional[dom.Rect](e.getViewportRectangle())
 }
 
 func (e Node) getViewportRectangle() (dom.Rect, error) {
@@ -547,13 +486,6 @@ func (e Node) getViewportRectangle() (dom.Rect, error) {
 }
 
 func (e Node) SelectByValues(values ...string) error {
-	t := time.Now()
-	err := e.selectByValues(values...)
-	e.log(t, "SelectByValues", "values", values, "err", err)
-	return err
-}
-
-func (e Node) selectByValues(values ...string) error {
 	_, err := e.eval(`function(a){const b=Array.from(this.options);this.value=void 0;for(const c of b)if(c.selected=a.includes(c.value),c.selected&&!this.multiple)break}`, values)
 	if err != nil {
 		return err
@@ -561,16 +493,8 @@ func (e Node) selectByValues(values ...string) error {
 	return e.dispatchEvents("click", "input", "change")
 }
 
-func (e Node) SelectByTexts(values ...string) error {
-	// todo
-	panic("SelectByTexts not implemented")
-}
-
 func (e Node) GetSelected(textContent bool) Optional[[]string] {
-	t := time.Now()
-	opt := optional[[]string](e.getSelected(textContent))
-	e.log(t, "GetSelected", "returnTextContent", textContent, "returnAttributeValue", !textContent, "values", opt.value, "err", opt.err)
-	return opt
+	return optional[[]string](e.getSelected(textContent))
 }
 
 func (e Node) getSelected(textContent bool) ([]string, error) {
@@ -586,13 +510,6 @@ func (e Node) getSelected(textContent bool) ([]string, error) {
 }
 
 func (e Node) SetCheckbox(check bool) error {
-	t := time.Now()
-	err := e.setCheckbox(check)
-	e.log(t, "SetCheckbox", "check", check, "err", err)
-	return err
-}
-
-func (e Node) setCheckbox(check bool) error {
 	_, err := e.eval(`function(v){this.checked=v}`, check)
 	if err != nil {
 		return err
@@ -601,10 +518,7 @@ func (e Node) setCheckbox(check bool) error {
 }
 
 func (e Node) IsChecked() Optional[bool] {
-	t := time.Now()
-	value, err := e.eval(`function(){return this.checked}`)
-	e.log(t, "IsChecked", "value", value, "err", err)
-	return optional[bool](value, err)
+	return optional[bool](e.eval(`function(){return this.checked}`))
 }
 
 func (nl NodeList) MapToString(mapFn func(*Node) (string, error)) ([]string, error) {
