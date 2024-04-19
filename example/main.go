@@ -66,19 +66,28 @@ func main() {
 	}
 
 	val := retry.FuncValue(func() ([]string, error) {
-		return session.Frame.QueryAll(".grid-product__title-inner").Value().MapToString(func(n *control.Node) (string, error) {
-			return n.GetText().Unwrap()
+		var values []string
+		err := session.Frame.QueryAll(".grid-product__title-inner").Then(func(nl control.NodeList) error {
+			return nl.Foreach(func(n *control.Node) error {
+				return n.GetText().Then(func(s string) error {
+					values = append(values, s)
+					return nil
+				})
+			})
 		})
+		return values, err
 	})
 	log.Println(val)
 
-	session.Frame.Query(`.pager__count-pages`).Value().GetBoundingClientRect().Value()
+	session.Frame.Query(`.pager__count-pages`).MustGetValue().GetBoundingClientRect().MustGetValue()
 
 	retry.Func(func() error {
-		return session.Frame.Query(`.pager__count-pages`).Value().Click()
+		return session.Frame.Query(`.pager__count-pages`).Then(func(n *control.Node) error {
+			return n.Click()
+		})
 	})
 
-	p := session.Frame.Evaluate(`new Promise((a,b) => b('timeout'))`, false).Value().(control.RemoteObject)
+	p := session.Frame.Evaluate(`new Promise((a,b) => b('timeout'))`, false).MustGetValue().(control.RemoteObject)
 	a, b := session.Frame.AwaitPromise(p)
 	log.Println(a, b)
 }

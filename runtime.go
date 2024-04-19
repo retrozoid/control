@@ -124,13 +124,14 @@ func (f *Frame) unserialize(value *runtime.RemoteObject) (any, error) {
 	}
 }
 
-func (f *Frame) requestNodeList(objectId runtime.RemoteObjectId) (*NodeList, error) {
+func (f *Frame) requestNodeList(objectId runtime.RemoteObjectId) (NodeList, error) {
 	descriptor, err := f.getProperties(remoteObjectValue(objectId), true, false, false, false)
 	if err != nil {
 		return nil, err
 	}
 	var i = 0
-	nodeList := &NodeList{}
+
+	var nodeList = make(NodeList, 0)
 	for _, d := range descriptor.Result {
 		if d.Enumerable {
 			i++
@@ -139,7 +140,7 @@ func (f *Frame) requestNodeList(objectId runtime.RemoteObjectId) (*NodeList, err
 				requestedSelector: d.Value.Description + fmt.Sprintf("(%d)", i),
 				frame:             f,
 			}
-			nodeList.Nodes = append(nodeList.Nodes, n)
+			nodeList = append(nodeList, n)
 		}
 	}
 	return nodeList, nil

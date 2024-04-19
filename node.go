@@ -12,18 +12,28 @@ import (
 	"github.com/retrozoid/control/protocol/runtime"
 )
 
-type NoSuchSelectorError string
+type (
+	NodeNonClickableError string
+	NodeInvisibleError    string
+	NodeUnstableError     string
+	NoSuchSelectorError   string
+)
+
+func (n NodeNonClickableError) Error() string {
+	return fmt.Sprintf("selector `%s` is not clickable", string(n))
+}
+
+func (n NodeInvisibleError) Error() string {
+	return fmt.Sprintf("selector `%s` is not visible", string(n))
+}
+
+func (n NodeUnstableError) Error() string {
+	return fmt.Sprintf("selector `%s` is not stable", string(n))
+}
 
 func (s NoSuchSelectorError) Error() string {
 	return fmt.Sprintf("no such selector found: `%s`", string(s))
 }
-
-var (
-	ErrElementUnclickable = errors.New("element is not clickable")
-	ErrElementUnvisible   = errors.New("element is not visible")
-	ErrElementUnstable    = errors.New("element is not stable")
-	ErrNoPredicateMatch   = errors.New("no predicate match")
-)
 
 type Node struct {
 	object            RemoteObject
@@ -31,9 +41,7 @@ type Node struct {
 	frame             *Frame
 }
 
-type NodeList struct {
-	Nodes []*Node
-}
+type NodeList []*Node
 
 type Point struct {
 	X float64
@@ -209,16 +217,32 @@ func (e Node) HasClass(class string) Optional[bool] {
 	return optional[bool](e.eval(`function(c){return this.classList.contains(c)}`))
 }
 
+func (e Node) MustHasClass(class string) bool {
+	return e.HasClass(class).MustGetValue()
+}
+
 func (e Node) CallFunctionOn(function string, args ...any) Optional[any] {
 	return optional[any](e.eval(function, args...))
+}
+
+func (e Node) MustCallFunctionOn(function string, args ...any) any {
+	return e.CallFunctionOn(function, args...).MustGetValue()
 }
 
 func (e Node) AsyncCallFunctionOn(function string, args ...any) Optional[RemoteObject] {
 	return optional[RemoteObject](e.asyncEval(function, args...))
 }
 
+func (e Node) MustAsyncCallFunctionOn(function string, args ...any) RemoteObject {
+	return e.AsyncCallFunctionOn(function, args...).MustGetValue()
+}
+
 func (e Node) Query(cssSelector string) Optional[*Node] {
 	return optional[*Node](e.query(cssSelector))
+}
+
+func (e Node) MustQuery(cssSelector string) *Node {
+	return e.Query(cssSelector).MustGetValue()
 }
 
 func (e Node) query(cssSelector string) (*Node, error) {
@@ -237,20 +261,28 @@ func (e Node) query(cssSelector string) (*Node, error) {
 	return node, nil
 }
 
-func (e Node) QueryAll(cssSelector string) Optional[*NodeList] {
-	return optional[*NodeList](e.queryAll(cssSelector))
+func (e Node) QueryAll(cssSelector string) Optional[NodeList] {
+	return optional[NodeList](e.queryAll(cssSelector))
 }
 
-func (e Node) queryAll(cssSelector string) (*NodeList, error) {
+func (e Node) MustQueryAll(cssSelector string) NodeList {
+	return e.QueryAll(cssSelector).MustGetValue()
+}
+
+func (e Node) queryAll(cssSelector string) (NodeList, error) {
 	value, err := e.eval(`function(s){return this.querySelectorAll(s)}`, cssSelector)
 	if err == nil && value == nil {
 		return nil, NoSuchSelectorError(cssSelector)
 	}
-	return value.(*NodeList), nil
+	return value.(NodeList), nil
 }
 
 func (e Node) ContentFrame() Optional[*Frame] {
 	return optional[*Frame](e.contentFrame())
+}
+
+func (e Node) MustContentFrame() *Frame {
+	return e.ContentFrame().MustGetValue()
 }
 
 func (e *Node) contentFrame() (*Frame, error) {
@@ -270,17 +302,39 @@ func (e Node) ScrollIntoView() error {
 	return dom.ScrollIntoViewIfNeeded(e, dom.ScrollIntoViewIfNeededArgs{ObjectId: e.GetRemoteObjectID()})
 }
 
+func (e Node) MustScrollIntoView() {
+	if err := e.ScrollIntoView(); err != nil {
+		panic(err)
+	}
+}
+
 func (e Node) GetText() Optional[string] {
 	return optional[string](e.eval(`function(){return ('INPUT'===this.nodeName||'TEXTAREA'===this.nodeName)?this.value:this.innerText}`))
+}
+
+func (e Node) MustGetText() string {
+	return e.GetText().MustGetValue()
 }
 
 func (e Node) Focus() error {
 	return dom.Focus(e, dom.FocusArgs{ObjectId: e.GetRemoteObjectID()})
 }
 
+func (e Node) MustFocus() {
+	if err := e.Focus(); err != nil {
+		panic(err)
+	}
+}
+
 func (e Node) Blur() error {
 	_, err := e.eval(`function(){this.blur()}`)
 	return err
+}
+
+func (e Node) MustBlur() {
+	if err := e.Blur(); err != nil {
+		panic(err)
+	}
 }
 
 func (e Node) clearInput() error {
@@ -295,8 +349,20 @@ func (e Node) InsertText(value string) error {
 	return e.setText(value, false)
 }
 
+func (e Node) MustInsertText(value string) {
+	if err := e.InsertText(value); err != nil {
+		panic(err)
+	}
+}
+
 func (e Node) SetText(value string) error {
 	return e.setText(value, true)
+}
+
+func (e Node) MustSetText(value string) {
+	if err := e.SetText(value); err != nil {
+		panic(err)
+	}
 }
 
 func (e Node) setText(value string, clearBefore bool) (err error) {
@@ -329,6 +395,12 @@ func (e Node) Upload(files ...string) error {
 	})
 }
 
+func (e Node) MustUpload(files ...string) {
+	if err := e.Upload(files...); err != nil {
+		panic(err)
+	}
+}
+
 func (e Node) Click() (err error) {
 	if err = e.ScrollIntoView(); err != nil {
 		return err
@@ -358,7 +430,7 @@ func (e Node) Click() (err error) {
 		return err
 	}
 	if !hit.(bool) {
-		return ErrElementUnclickable
+		return NodeNonClickableError(e.requestedSelector)
 	}
 	if err = e.frame.session.Click(point); err != nil {
 		return err
@@ -366,13 +438,23 @@ func (e Node) Click() (err error) {
 	return nil
 }
 
-func (e Node) ClickablePoint() Optional[Point] {
+func (e Node) MustClick() {
+	if err := e.Click(); err != nil {
+		panic(err)
+	}
+}
+
+func (e Node) GetClickablePoint() Optional[Point] {
 	return optional[Point](e.clickablePoint())
+}
+
+func (e Node) MustGetClickablePoint() Point {
+	return e.GetClickablePoint().MustGetValue()
 }
 
 func (e Node) clickablePoint() (middle Point, err error) {
 	if !e.CheckVisibility() {
-		return middle, ErrElementUnvisible
+		return middle, NodeInvisibleError(e.requestedSelector)
 	}
 	var (
 		r0, r1 Quad
@@ -393,11 +475,15 @@ func (e Node) clickablePoint() (middle Point, err error) {
 	if middle.Equal(r1.Middle()) {
 		return middle, nil
 	}
-	return middle, ErrElementUnstable
+	return middle, NodeUnstableError(e.requestedSelector)
 }
 
 func (e Node) GetBoundingClientRect() Optional[dom.Rect] {
 	return optional[dom.Rect](e.getBoundingClientRect())
+}
+
+func (e Node) MustGetBoundingClientRect() dom.Rect {
+	return e.GetBoundingClientRect().MustGetValue()
 }
 
 func (e Node) getBoundingClientRect() (dom.Rect, error) {
@@ -450,6 +536,12 @@ func (e Node) Hover() error {
 	return e.frame.session.Hover(p)
 }
 
+func (e Node) MustHover() {
+	if err := e.Hover(); err != nil {
+		panic(err)
+	}
+}
+
 func (e Node) GetComputedStyle(style string, pseudo string) Optional[string] {
 	var pseudoVar any = nil
 	if pseudo != "" {
@@ -458,17 +550,35 @@ func (e Node) GetComputedStyle(style string, pseudo string) Optional[string] {
 	return optional[string](e.eval(`function(p,s){return getComputedStyle(this, p)[s]}`, pseudoVar, style))
 }
 
+func (e Node) MustGetComputedStyle(style string, pseudo string) string {
+	return e.GetComputedStyle(style, pseudo).MustGetValue()
+}
+
 func (e Node) SetAttribute(attr, value string) error {
 	_, err := e.eval(`function(a,v){this.setAttribute(a,v)}`, attr, value)
 	return err
+}
+
+func (e Node) MustSetAttribute(attr, value string) {
+	if err := e.SetAttribute(attr, value); err != nil {
+		panic(err)
+	}
 }
 
 func (e Node) GetAttribute(attr string) Optional[string] {
 	return optional[string](e.eval(`function(a){return this.getAttribute(a)}`, attr))
 }
 
+func (e Node) MustGetAttribute(attr string) string {
+	return e.GetAttribute(attr).MustGetValue()
+}
+
 func (e Node) GetRectangle() Optional[dom.Rect] {
 	return optional[dom.Rect](e.getViewportRectangle())
+}
+
+func (e Node) MustGetRectangle() dom.Rect {
+	return e.GetRectangle().MustGetValue()
 }
 
 func (e Node) getViewportRectangle() (dom.Rect, error) {
@@ -493,8 +603,18 @@ func (e Node) SelectByValues(values ...string) error {
 	return e.dispatchEvents("click", "input", "change")
 }
 
+func (e Node) MustSelectByValues(values ...string) {
+	if err := e.SelectByValues(values...); err != nil {
+		panic(err)
+	}
+}
+
 func (e Node) GetSelected(textContent bool) Optional[[]string] {
 	return optional[[]string](e.getSelected(textContent))
+}
+
+func (e Node) MustGetSelected(textContent bool) []string {
+	return e.GetSelected(textContent).MustGetValue()
 }
 
 func (e Node) getSelected(textContent bool) ([]string, error) {
@@ -517,40 +637,25 @@ func (e Node) SetCheckbox(check bool) error {
 	return e.dispatchEvents("click", "input", "change")
 }
 
+func (e Node) MustSetCheckbox(check bool) {
+	if err := e.SetCheckbox(check); err != nil {
+		panic(err)
+	}
+}
+
 func (e Node) IsChecked() Optional[bool] {
 	return optional[bool](e.eval(`function(){return this.checked}`))
 }
 
-func (nl NodeList) MapToString(mapFn func(*Node) (string, error)) ([]string, error) {
-	var r []string
-	for _, node := range nl.Nodes {
-		val, err := mapFn(node)
-		if err != nil {
-			return r, err
-		}
-		r = append(r, val)
-	}
-	return r, nil
+func (e Node) MustIsChecked() bool {
+	return e.IsChecked().MustGetValue()
 }
 
 func (nl NodeList) Foreach(predicate func(*Node) error) error {
-	for _, node := range nl.Nodes {
+	for _, node := range nl {
 		if err := predicate(node); err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-func (nl NodeList) First(predicate func(*Node) (bool, error)) Optional[*Node] {
-	for _, node := range nl.Nodes {
-		val, err := predicate(node)
-		if err != nil {
-			return Optional[*Node]{err: err}
-		}
-		if val {
-			return Optional[*Node]{value: node}
-		}
-	}
-	return Optional[*Node]{err: ErrNoPredicateMatch}
 }

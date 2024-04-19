@@ -34,7 +34,7 @@ func (op Optional[T]) Err() error {
 	return op.err
 }
 
-func (op Optional[T]) Value() T {
+func (op Optional[T]) MustGetValue() T {
 	if op.err != nil {
 		panic(op.err)
 	}

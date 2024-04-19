@@ -50,7 +50,7 @@ func (d Backoff) Before(retry int) {
 	time.Sleep(time.Second * time.Duration(backoff))
 }
 
-func recoverFunc[T any](function func() (T, error)) (value T, err error) {
+func recoverFunc(function func()) (err error) {
 	defer func() {
 		if value := recover(); value != nil {
 			switch errorValue := value.(type) {
@@ -61,13 +61,19 @@ func recoverFunc[T any](function func() (T, error)) (value T, err error) {
 			}
 		}
 	}()
-	value, err = function()
+	function()
 	return
 }
 
 func Func(function func() error) {
 	baseRerty(DefaultTiming, func() (any, error) {
 		return nil, function()
+	})
+}
+
+func FuncPanic(function func()) {
+	baseRerty(DefaultTiming, func() (any, error) {
+		return nil, recoverFunc(function)
 	})
 }
 
@@ -85,7 +91,7 @@ func baseRerty[T any](t Timing, function func() (T, error)) T {
 	)
 	for time.Since(start) < deadline {
 		t.Before(retry)
-		if value, err = recoverFunc(function); err == nil {
+		if value, err = function(); err == nil {
 			return value
 		}
 		retry++

@@ -242,6 +242,12 @@ func (s *Session) SetDownloadBehavior(behavior string, downloadPath string, even
 	})
 }
 
+func (s *Session) MustSetDownloadBehavior(behavior string, downloadPath string, eventsEnabled bool) {
+	if err := s.SetDownloadBehavior(behavior, downloadPath, eventsEnabled); err != nil {
+		panic(err)
+	}
+}
+
 func (s *Session) GetTargetCreated() Future[target.TargetCreated] {
 	return Subscribe(s, "Target.targetCreated", func(t target.TargetCreated) bool {
 		return t.TargetInfo.Type == "page" && t.TargetInfo.OpenerId == s.targetID
@@ -290,12 +296,30 @@ func (s *Session) Click(point Point) error {
 	return s.mouse.Click(MouseLeft, point, time.Millisecond*85)
 }
 
+func (s *Session) MustClick(point Point) {
+	if err := s.Click(point); err != nil {
+		panic(err)
+	}
+}
+
 func (s *Session) Swipe(from, to Point) error {
 	return s.touch.Swipe(from, to)
 }
 
+func (s *Session) MustSwipe(from, to Point) {
+	if err := s.Swipe(from, to); err != nil {
+		panic(err)
+	}
+}
+
 func (s *Session) Hover(point Point) error {
 	return s.mouse.Move(MouseNone, point)
+}
+
+func (s *Session) MustHover(point Point) {
+	if err := s.Hover(point); err != nil {
+		panic(err)
+	}
 }
 
 func (s *Session) GetLayout() Optional[page.GetLayoutMetricsVal] {
