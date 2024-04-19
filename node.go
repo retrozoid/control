@@ -14,6 +14,7 @@ import (
 
 type (
 	NodeNonClickableError string
+	NodeNonFocusableError string
 	NodeInvisibleError    string
 	NodeUnstableError     string
 	NoSuchSelectorError   string
@@ -29,6 +30,10 @@ func (n NodeInvisibleError) Error() string {
 
 func (n NodeUnstableError) Error() string {
 	return fmt.Sprintf("selector `%s` is not stable", string(n))
+}
+
+func (n NodeNonFocusableError) Error() string {
+	return fmt.Sprintf("selector `%s` is not focusable", string(n))
 }
 
 func (s NoSuchSelectorError) Error() string {
@@ -317,7 +322,11 @@ func (e Node) MustGetText() string {
 }
 
 func (e Node) Focus() error {
-	return dom.Focus(e, dom.FocusArgs{ObjectId: e.GetRemoteObjectID()})
+	err := dom.Focus(e, dom.FocusArgs{ObjectId: e.GetRemoteObjectID()})
+	if err != nil && err.Error() == `Element is not focusable` {
+		return NodeNonFocusableError(e.requestedSelector)
+	}
+	return err
 }
 
 func (e Node) MustFocus() {
