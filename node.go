@@ -40,6 +40,8 @@ func (s NoSuchSelectorError) Error() string {
 	return fmt.Sprintf("no such selector found: `%s`", string(s))
 }
 
+var ErrRequestIdleCallbackDeadline = errors.New("requestIdleCallback did deadline")
+
 type Node struct {
 	object            RemoteObject
 	requestedSelector string
@@ -414,6 +416,13 @@ func (e Node) Click() (err error) {
 	if err = e.ScrollIntoView(); err != nil {
 		return err
 	}
+	didTimeout, err := e.frame.evaluate(`new Promise(r=> requestIdleCallback(d => r(d.didTimeout), {timeout:10000}))`, true)
+	if err != nil {
+		return err
+	}
+	if didTimeout.(bool) {
+		return ErrRequestIdleCallbackDeadline
+	}
 	point, err := e.clickablePoint()
 	if err != nil {
 		return err
@@ -472,7 +481,7 @@ func (e Node) clickablePoint() (middle Point, err error) {
 	if err != nil {
 		return middle, err
 	}
-	_, err = e.frame.requestIdleCallback("return !0", true)
+	_, err = e.frame.evaluate(`new Promise(requestAnimationFrame)`, true)
 	if err != nil {
 		return middle, err
 	}

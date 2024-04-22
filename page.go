@@ -107,10 +107,6 @@ func (f Frame) MustReload(ignoreCache bool, scriptToEvaluateOnLoad string) {
 	}
 }
 
-func (f Frame) RequestIdleCallback(expression string, awaitPromise bool) Optional[any] {
-	return optional[any](f.requestIdleCallback(expression, awaitPromise))
-}
-
 func (f Frame) Evaluate(expression string, awaitPromise bool) Optional[any] {
 	return optional[any](f.evaluate(expression, awaitPromise))
 }
