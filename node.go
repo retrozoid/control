@@ -416,7 +416,7 @@ func (e Node) Click() (err error) {
 	if err = e.ScrollIntoView(); err != nil {
 		return err
 	}
-	didTimeout, err := e.frame.evaluate(`new Promise(r=> requestIdleCallback(d => r(d.didTimeout), {timeout:10000}))`, true)
+	didTimeout, err := e.frame.evaluate(`new Promise(r => requestIdleCallback(d => r(d.didTimeout), {timeout:10000}))`, true)
 	if err != nil {
 		return err
 	}
