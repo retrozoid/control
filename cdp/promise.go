@@ -9,6 +9,7 @@ import (
 var ErrPromiseCanceled = errors.New("promise canceled")
 
 type Future[T any] interface {
+	Finally(func()) Future[T]
 	Get(context.Context) (T, error)
 	Cancel()
 }
@@ -24,6 +25,12 @@ type promise[T any] struct {
 	fulfilled chan struct{}
 	value     T
 	err       error
+	finally   []func()
+}
+
+func (u *promise[T]) Finally(a func()) Future[T] {
+	u.finally = append(u.finally, a)
+	return u
 }
 
 func (u *promise[T]) Get(parent context.Context) (T, error) {
@@ -44,6 +51,9 @@ func (u *promise[T]) resolve(value T) {
 	u.once.Do(func() {
 		u.value = value
 		close(u.fulfilled)
+		for _, f := range u.finally {
+			f()
+		}
 	})
 }
 
@@ -51,5 +61,8 @@ func (u *promise[T]) reject(err error) {
 	u.once.Do(func() {
 		u.err = err
 		close(u.fulfilled)
+		for _, f := range u.finally {
+			f()
+		}
 	})
 }

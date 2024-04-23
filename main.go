@@ -96,5 +96,5 @@ func Subscribe[T any](s *Session, method string, filter func(T) bool) Future[T] 
 			}
 		}
 	})
-	return WithSessionContext(s, future)
+	return WithSessionContext(s, future.Finally(cancel))
 }
