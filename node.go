@@ -187,6 +187,12 @@ func (e Node) IsConnected() bool {
 	return value.(bool)
 }
 
+func (e Node) MustReleaseObject() {
+	if err := e.ReleaseObject(); err != nil {
+		panic(err)
+	}
+}
+
 func (e Node) ReleaseObject() error {
 	err := runtime.ReleaseObject(e, runtime.ReleaseObjectArgs{ObjectId: e.GetRemoteObjectID()})
 	if err != nil && err.Error() == `Cannot find context with specified id` {
@@ -269,19 +275,15 @@ func (e Node) query(cssSelector string) (*Node, error) {
 }
 
 func (e Node) QueryAll(cssSelector string) Optional[NodeList] {
-	return optional[NodeList](e.queryAll(cssSelector))
+	value, err := e.eval(`function(s){return this.querySelectorAll(s)}`, cssSelector)
+	if err == nil && value == nil {
+		err = NoSuchSelectorError(cssSelector)
+	}
+	return optional[NodeList](value, err)
 }
 
 func (e Node) MustQueryAll(cssSelector string) NodeList {
 	return e.QueryAll(cssSelector).MustGetValue()
-}
-
-func (e Node) queryAll(cssSelector string) (NodeList, error) {
-	value, err := e.eval(`function(s){return this.querySelectorAll(s)}`, cssSelector)
-	if err == nil && value == nil {
-		return nil, NoSuchSelectorError(cssSelector)
-	}
-	return value.(NodeList), nil
 }
 
 func (e Node) ContentFrame() Optional[*Frame] {
@@ -305,14 +307,16 @@ func (e *Node) contentFrame() (*Frame, error) {
 	}, nil
 }
 
-func (e Node) ScrollIntoView() error {
+func (e Node) scrollIntoView() error {
 	return dom.ScrollIntoViewIfNeeded(e, dom.ScrollIntoViewIfNeededArgs{ObjectId: e.GetRemoteObjectID()})
 }
 
+func (e Node) ScrollIntoView() Optional[Nothing] {
+	return Optional[Nothing]{err: e.scrollIntoView()}
+}
+
 func (e Node) MustScrollIntoView() {
-	if err := e.ScrollIntoView(); err != nil {
-		panic(err)
-	}
+	e.ScrollIntoView().MustGetValue()
 }
 
 func (e Node) GetText() Optional[string] {
@@ -323,29 +327,25 @@ func (e Node) MustGetText() string {
 	return e.GetText().MustGetValue()
 }
 
-func (e Node) Focus() error {
+func (e Node) Focus() Optional[Nothing] {
 	err := dom.Focus(e, dom.FocusArgs{ObjectId: e.GetRemoteObjectID()})
 	if err != nil && err.Error() == `Element is not focusable` {
-		return NodeNonFocusableError(e.requestedSelector)
+		err = NodeNonFocusableError(e.requestedSelector)
 	}
-	return err
+	return Optional[Nothing]{err: err}
 }
 
 func (e Node) MustFocus() {
-	if err := e.Focus(); err != nil {
-		panic(err)
-	}
+	e.Focus().MustGetValue()
 }
 
-func (e Node) Blur() error {
+func (e Node) Blur() Optional[Node] {
 	_, err := e.eval(`function(){this.blur()}`)
-	return err
+	return Optional[Node]{err: err}
 }
 
 func (e Node) MustBlur() {
-	if err := e.Blur(); err != nil {
-		panic(err)
-	}
+	e.Blur().MustGetValue()
 }
 
 func (e Node) clearInput() error {
@@ -356,28 +356,24 @@ func (e Node) clearInput() error {
 	return e.frame.session.kb.Press(key.Keys[key.Backspace], time.Millisecond*85)
 }
 
-func (e Node) InsertText(value string) error {
-	return e.setText(value, false)
+func (e Node) InsertText(value string) Optional[Nothing] {
+	return Optional[Nothing]{err: e.setText(value, false)}
 }
 
 func (e Node) MustInsertText(value string) {
-	if err := e.InsertText(value); err != nil {
-		panic(err)
-	}
+	e.InsertText(value).MustGetValue()
 }
 
-func (e Node) SetText(value string) error {
-	return e.setText(value, true)
+func (e Node) SetText(value string) Optional[Nothing] {
+	return Optional[Nothing]{err: e.setText(value, true)}
 }
 
 func (e Node) MustSetText(value string) {
-	if err := e.SetText(value); err != nil {
-		panic(err)
-	}
+	e.SetText(value).MustGetValue()
 }
 
 func (e Node) setText(value string, clearBefore bool) (err error) {
-	if err = e.Focus(); err != nil {
+	if err = e.Focus().Err(); err != nil {
 		return err
 	}
 	if clearBefore {
@@ -391,29 +387,33 @@ func (e Node) setText(value string, clearBefore bool) (err error) {
 	return nil
 }
 
-func (e Node) CheckVisibility() bool {
-	value, err := e.eval(`function(){return this.checkVisibility({opacityProperty: false, visibilityProperty: true})}`)
-	if err != nil {
-		return false
-	}
-	return value.(bool)
+func (e Node) MustCheckVisibility() bool {
+	return e.CheckVisibility().MustGetValue()
 }
 
-func (e Node) Upload(files ...string) error {
-	return dom.SetFileInputFiles(e, dom.SetFileInputFilesArgs{
+func (e Node) CheckVisibility() Optional[bool] {
+	value, err := e.eval(`function(){return this.checkVisibility({opacityProperty: false, visibilityProperty: true})}`)
+	return optional[bool](value, err)
+}
+
+func (e Node) Upload(files ...string) Optional[Nothing] {
+	err := dom.SetFileInputFiles(e, dom.SetFileInputFilesArgs{
 		ObjectId: e.GetRemoteObjectID(),
 		Files:    files,
 	})
+	return Optional[Nothing]{err: err}
 }
 
 func (e Node) MustUpload(files ...string) {
-	if err := e.Upload(files...); err != nil {
-		panic(err)
-	}
+	e.Upload(files...).MustGetValue()
 }
 
-func (e Node) Click() (err error) {
-	if err = e.ScrollIntoView(); err != nil {
+func (e Node) Click() Optional[Nothing] {
+	return Optional[Nothing]{err: e.click()}
+}
+
+func (e Node) click() (err error) {
+	if err = e.scrollIntoView(); err != nil {
 		return err
 	}
 	didTimeout, err := e.frame.evaluate(`new Promise(r => requestIdleCallback(d => r(d.didTimeout), {timeout:10000}))`, true)
@@ -457,9 +457,7 @@ func (e Node) Click() (err error) {
 }
 
 func (e Node) MustClick() {
-	if err := e.Click(); err != nil {
-		panic(err)
-	}
+	e.Click().MustGetValue()
 }
 
 func (e Node) GetClickablePoint() Optional[Point] {
@@ -471,7 +469,11 @@ func (e Node) MustGetClickablePoint() Point {
 }
 
 func (e Node) clickablePoint() (middle Point, err error) {
-	if !e.CheckVisibility() {
+	value, err := e.CheckVisibility().Unwrap()
+	if err != nil {
+		return middle, err
+	}
+	if !value {
 		return middle, NodeInvisibleError(e.requestedSelector)
 	}
 	var (
@@ -543,8 +545,12 @@ func (e Node) getContentQuad() (Quad, error) {
 	return nil, errors.New("node bounds have no size")
 }
 
-func (e Node) Hover() error {
-	if err := e.ScrollIntoView(); err != nil {
+func (e Node) Hover() Optional[Nothing] {
+	return Optional[Nothing]{err: e.hover()}
+}
+
+func (e Node) hover() error {
+	if err := e.scrollIntoView(); err != nil {
 		return err
 	}
 	p, err := e.clickablePoint()
@@ -555,9 +561,7 @@ func (e Node) Hover() error {
 }
 
 func (e Node) MustHover() {
-	if err := e.Hover(); err != nil {
-		panic(err)
-	}
+	e.Hover().MustGetValue()
 }
 
 func (e Node) GetComputedStyle(style string, pseudo string) Optional[string] {
@@ -572,15 +576,13 @@ func (e Node) MustGetComputedStyle(style string, pseudo string) string {
 	return e.GetComputedStyle(style, pseudo).MustGetValue()
 }
 
-func (e Node) SetAttribute(attr, value string) error {
+func (e Node) SetAttribute(attr, value string) Optional[Nothing] {
 	_, err := e.eval(`function(a,v){this.setAttribute(a,v)}`, attr, value)
-	return err
+	return Optional[Nothing]{err: err}
 }
 
 func (e Node) MustSetAttribute(attr, value string) {
-	if err := e.SetAttribute(attr, value); err != nil {
-		panic(err)
-	}
+	e.SetAttribute(attr, value).MustGetValue()
 }
 
 func (e Node) GetAttribute(attr string) Optional[string] {
@@ -613,18 +615,16 @@ func (e Node) getViewportRectangle() (dom.Rect, error) {
 	return rect, nil
 }
 
-func (e Node) SelectByValues(values ...string) error {
+func (e Node) SelectByValues(values ...string) Optional[Nothing] {
 	_, err := e.eval(`function(a){const b=Array.from(this.options);this.value=void 0;for(const c of b)if(c.selected=a.includes(c.value),c.selected&&!this.multiple)break}`, values)
 	if err != nil {
-		return err
+		return Optional[Nothing]{err: err}
 	}
-	return e.dispatchEvents("click", "input", "change")
+	return Optional[Nothing]{err: e.dispatchEvents("click", "input", "change")}
 }
 
 func (e Node) MustSelectByValues(values ...string) {
-	if err := e.SelectByValues(values...); err != nil {
-		panic(err)
-	}
+	e.SelectByValues(values...).MustGetValue()
 }
 
 func (e Node) GetSelected(textContent bool) Optional[[]string] {
@@ -647,18 +647,16 @@ func (e Node) getSelected(textContent bool) ([]string, error) {
 	return stringsValues, nil
 }
 
-func (e Node) SetCheckbox(check bool) error {
+func (e Node) SetCheckbox(check bool) Optional[Nothing] {
 	_, err := e.eval(`function(v){this.checked=v}`, check)
 	if err != nil {
-		return err
+		return Optional[Nothing]{err: err}
 	}
-	return e.dispatchEvents("click", "input", "change")
+	return Optional[Nothing]{err: e.dispatchEvents("click", "input", "change")}
 }
 
 func (e Node) MustSetCheckbox(check bool) {
-	if err := e.SetCheckbox(check); err != nil {
-		panic(err)
-	}
+	e.SetCheckbox(check).MustGetValue()
 }
 
 func (e Node) IsChecked() Optional[bool] {

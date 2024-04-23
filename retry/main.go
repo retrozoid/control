@@ -50,40 +50,37 @@ func (d Backoff) Before(retry int) {
 	time.Sleep(time.Second * time.Duration(backoff))
 }
 
-func recoverFunc(function func()) (err error) {
-	defer func() {
-		if value := recover(); value != nil {
-			switch errorValue := value.(type) {
-			case error:
-				err = errorValue
-			default:
-				err = errors.New(fmt.Sprint(value))
+func RecoverFunc(function func()) func() error {
+	return func() (err error) {
+		defer func() {
+			if value := recover(); value != nil {
+				switch errorValue := value.(type) {
+				case error:
+					err = errorValue
+				default:
+					err = errors.New(fmt.Sprint(value))
+				}
 			}
-		}
-	}()
-	function()
-	return
+		}()
+		function()
+		return
+	}
 }
 
-func Func(function func() error) {
-	baseRerty(DefaultTiming, func() (any, error) {
-		return nil, function()
-	})
+func (d Static) Func(function func() error) error {
+	return BaseRerty(d, function)
 }
 
-func FuncPanic(function func()) {
-	baseRerty(DefaultTiming, func() (any, error) {
-		return nil, recoverFunc(function)
-	})
+func FuncPanic(t Timing, function func()) error {
+	return BaseRerty(t, RecoverFunc(function))
 }
 
-func FuncValue[T any](function func() (T, error)) T {
-	return baseRerty(DefaultTiming, function)
+func Func(t Timing, function func() error) error {
+	return BaseRerty(t, function)
 }
 
-func baseRerty[T any](t Timing, function func() (T, error)) T {
+func BaseRerty(t Timing, function func() error) error {
 	var (
-		value    T
 		err      error
 		retry    = 0
 		start    = time.Now()
@@ -91,10 +88,10 @@ func baseRerty[T any](t Timing, function func() (T, error)) T {
 	)
 	for time.Since(start) < deadline {
 		t.Before(retry)
-		if value, err = function(); err == nil {
-			return value
+		if err = function(); err == nil {
+			return nil
 		}
 		retry++
 	}
-	panic(err)
+	return err
 }

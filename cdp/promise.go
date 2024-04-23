@@ -8,27 +8,15 @@ import (
 
 var ErrPromiseCanceled = errors.New("promise canceled")
 
-type (
-	ResponseFuture  = Future[Response]
-	responsePromise = Promise[Response]
-)
-
 type Future[T any] interface {
 	Get(context.Context) (T, error)
 	Cancel()
 }
 
-type Promise[T any] interface {
-	Resolve(T)
-	Reject(error)
-}
-
-func NewPromise[T any](clean func()) (Promise[T], Future[T]) {
-	value := &promise[T]{
-		fulfilled: make(chan struct{}, 1),
-		clean:     clean,
-	}
-	return value, value
+func NewPromise[T any](executor func(resolve func(T), reject func(error))) Future[T] {
+	value := &promise[T]{fulfilled: make(chan struct{}, 1)}
+	go executor(value.resolve, value.reject)
+	return value
 }
 
 type promise[T any] struct {
@@ -36,7 +24,6 @@ type promise[T any] struct {
 	fulfilled chan struct{}
 	value     T
 	err       error
-	clean     func()
 }
 
 func (u *promise[T]) Get(parent context.Context) (T, error) {
@@ -50,25 +37,19 @@ func (u *promise[T]) Get(parent context.Context) (T, error) {
 }
 
 func (u *promise[T]) Cancel() {
-	u.Reject(ErrPromiseCanceled)
+	u.reject(ErrPromiseCanceled)
 }
 
-func (u *promise[T]) Resolve(value T) {
+func (u *promise[T]) resolve(value T) {
 	u.once.Do(func() {
 		u.value = value
 		close(u.fulfilled)
-		if u.clean != nil {
-			u.clean()
-		}
 	})
 }
 
-func (u *promise[T]) Reject(err error) {
+func (u *promise[T]) reject(err error) {
 	u.once.Do(func() {
 		u.err = err
 		close(u.fulfilled)
-		if u.clean != nil {
-			u.clean()
-		}
 	})
 }

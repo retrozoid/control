@@ -25,7 +25,7 @@ type Transport struct {
 	cancel  func(error)
 	conn    *websocket.Conn
 	seq     uint64
-	pending map[uint64]responsePromise
+	pending map[uint64]*promise[Response]
 	mutex   sync.Mutex
 	broker  broker
 	logger  *slog.Logger
@@ -48,7 +48,7 @@ func Dial(parent context.Context, dialer websocket.Dialer, url string, logger *s
 		conn:    conn,
 		seq:     1,
 		broker:  makeBroker(),
-		pending: make(map[uint64]responsePromise),
+		pending: make(map[uint64]*promise[Response]),
 		logger:  logger,
 	}
 	go transport.broker.run()
@@ -72,71 +72,65 @@ func (t *Transport) Context() context.Context {
 	return t.context
 }
 
-func (t *Transport) isClosed() bool {
+func (t *Transport) Close() error {
 	select {
 	case <-t.context.Done():
-		return true
+		return context.Cause(t.context)
 	default:
-		return false
+		_, err := t.Send(&Request{Method: "Browser.close"}).Get(t.context)
+		if err != nil {
+			return err
+		}
+		t.cancel(ErrGracefullyClosed)
+		return t.conn.Close()
 	}
-}
-
-func (t *Transport) error() error {
-	return context.Cause(t.context)
-}
-
-func (t *Transport) Close() error {
-	if t.isClosed() {
-		return t.error()
-	}
-	_, err := t.Send(&Request{Method: "Browser.close"}).Get(t.context)
-	if err != nil {
-		return err
-	}
-	t.cancel(ErrGracefullyClosed)
-	return t.conn.Close()
 }
 
 func (t *Transport) gracefullyClose() {
 	t.mutex.Lock()
+	defer t.mutex.Unlock()
 	t.broker.Cancel()
-	err := t.error()
+	err := context.Cause(t.context)
 	for key, value := range t.pending {
-		value.Reject(err)
+		value.reject(err)
 		delete(t.pending, key)
 	}
-	t.mutex.Unlock()
 }
 
 func (t *Transport) Subscribe(sessionID string) (chan Message, func()) {
-	if t.isClosed() {
+	select {
+	case <-t.context.Done():
 		return nil, nil
-	}
-	ch := t.broker.Subscribe(sessionID)
-	return ch, func() {
-		t.broker.Unsubscribe(ch)
+	default:
+		ch := t.broker.Subscribe(sessionID)
+		return ch, func() {
+			t.broker.Unsubscribe(ch)
+		}
 	}
 }
 
-func (t *Transport) Send(request *Request) ResponseFuture {
-	var resolver, future = NewPromise[Response](nil)
-	if t.isClosed() {
-		resolver.Reject(t.error())
-		return future
+func (t *Transport) Send(request *Request) Future[Response] {
+	var promise = &promise[Response]{fulfilled: make(chan struct{}, 1)}
+	select {
+	case <-t.context.Done():
+		promise.reject(context.Cause(t.context))
+		return promise
+	default:
 	}
+
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
 	seq := t.seq
 	t.seq++
-	t.pending[seq] = resolver
+	t.pending[seq] = promise
 	request.ID = seq
 	t.Log(slog.LevelDebug, "send ->", "request", request.String())
 
 	if err := t.conn.WriteJSON(request); err != nil {
 		delete(t.pending, seq)
-		resolver.Reject(err)
+		promise.reject(err)
 	}
-	return future
+	return promise
 }
 
 func (t *Transport) read() error {
@@ -160,9 +154,9 @@ func (t *Transport) read() error {
 		return errors.New("unexpected response " + response.String())
 	}
 	if response.Error != nil {
-		value.Reject(response.Error)
+		value.reject(response.Error)
 		return nil
 	}
-	value.Resolve(response)
+	value.resolve(response)
 	return nil
 }

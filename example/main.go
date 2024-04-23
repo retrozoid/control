@@ -65,9 +65,12 @@ func main() {
 		panic(err)
 	}
 
-	val := retry.FuncValue(func() ([]string, error) {
-		var values []string
-		err := session.Frame.QueryAll(".grid-product__title-inner").Then(func(nl control.NodeList) error {
+	retrier := retry.DefaultTiming
+
+	var values []string
+	err = retry.BaseRerty(retrier, func() error {
+		values = []string{}
+		return session.Frame.QueryAll(".grid-product__title-inner").Then(func(nl control.NodeList) error {
 			return nl.Foreach(func(n *control.Node) error {
 				return n.GetText().Then(func(s string) error {
 					values = append(values, s)
@@ -75,17 +78,21 @@ func main() {
 				})
 			})
 		})
-		return values, err
 	})
-	log.Println(val)
 
-	session.Frame.Query(`.pager__count-pages`).MustGetValue().GetBoundingClientRect().MustGetValue()
+	log.Println(values, err)
 
-	retry.Func(func() error {
+	err = retry.FuncPanic(retrier, func() {
+		session.Frame.MustQuery(`.pager__count-pages`).MustGetBoundingClientRect()
+	})
+	log.Println(err)
+
+	err = retry.Func(retrier, func() error {
 		return session.Frame.Query(`.pager__count-pages`).Then(func(n *control.Node) error {
-			return n.Click()
+			return n.Click().Err()
 		})
 	})
+	log.Println(err)
 
 	p := session.Frame.Evaluate(`new Promise((a,b) => b('timeout'))`, false).MustGetValue().(control.RemoteObject)
 	a, b := session.Frame.AwaitPromise(p)

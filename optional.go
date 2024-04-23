@@ -5,6 +5,8 @@ import (
 	"reflect"
 )
 
+type Nothing struct{}
+
 type Optional[T any] struct {
 	value T
 	err   error
@@ -43,11 +45,16 @@ func (op Optional[T]) MustGetValue() T {
 
 func (op Optional[T]) Then(f func(T) error) error {
 	if op.err == nil {
-		if err := f(op.value); err != nil {
-			return err
-		}
+		return f(op.value)
 	}
 	return op.err
+}
+
+func (op Optional[T]) Catch(f func(error) error) error {
+	if op.err != nil {
+		return f(op.err)
+	}
+	return nil
 }
 
 func (op Optional[T]) IfPresent(f func(T)) {

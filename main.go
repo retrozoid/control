@@ -51,50 +51,50 @@ type Future[T any] interface {
 	Cancel()
 }
 
-func NewSessionContextFuture[T any](session *Session, future cdp.Future[T]) Future[T] {
-	return deadlineFuture[T]{
+func WithSessionContext[T any](session *Session, future cdp.Future[T]) Future[T] {
+	return sessionContextFuture[T]{
 		context:  session.context,
 		deadline: session.timeout,
 		future:   future,
 	}
 }
 
-type deadlineFuture[T any] struct {
+type sessionContextFuture[T any] struct {
 	context  context.Context
 	deadline time.Duration
 	future   cdp.Future[T]
 }
 
-func (f deadlineFuture[T]) Get() (T, error) {
+func (f sessionContextFuture[T]) Get() (T, error) {
 	withTimeout, cancel := context.WithTimeout(f.context, f.deadline)
 	defer cancel()
 	return f.future.Get(withTimeout)
 }
 
-func (f deadlineFuture[T]) Cancel() {
+func (f sessionContextFuture[T]) Cancel() {
 	f.future.Cancel()
 }
 
 func Subscribe[T any](s *Session, method string, filter func(T) bool) Future[T] {
 	var (
 		channel, cancel = s.Subscribe()
-		promise, future = cdp.NewPromise[T](cancel)
 	)
-	go func() {
+	future := cdp.NewPromise(func(resolve func(T), reject func(error)) {
+		defer cancel()
 		for value := range channel {
 			if value.Method == method {
 				var result T
 				err := json.Unmarshal(value.Params, &result)
 				if err != nil {
-					promise.Reject(err)
+					reject(err)
 					return
 				}
 				if filter(result) {
-					promise.Resolve(result)
+					resolve(result)
 					return
 				}
 			}
 		}
-	}()
-	return NewSessionContextFuture(s, future)
+	})
+	return WithSessionContext(s, future)
 }
