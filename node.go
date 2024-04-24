@@ -46,8 +46,6 @@ func panicIfError(err error) {
 	}
 }
 
-var ErrRequestIdleCallbackDeadline = errors.New("requestIdleCallback did deadline")
-
 type Node struct {
 	object            RemoteObject
 	requestedSelector string
@@ -417,12 +415,9 @@ func (e Node) Click() (err error) {
 	if err = e.scrollIntoView(); err != nil {
 		return err
 	}
-	didTimeout, err := e.frame.evaluate(`new Promise(r => requestIdleCallback(d => r(d.didTimeout), {timeout:10000}))`, true)
+	_, err = e.frame.evaluate(`new Promise(setTimeout)`, true)
 	if err != nil {
 		return err
-	}
-	if didTimeout.(bool) {
-		return ErrRequestIdleCallbackDeadline
 	}
 	point, err := e.clickablePoint()
 	if err != nil {
