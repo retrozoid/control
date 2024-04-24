@@ -89,7 +89,7 @@ func main() {
 
 	err = retry.Func(retrier, func() error {
 		return session.Frame.Query(`.pager__count-pages`).Then(func(n *control.Node) error {
-			return n.Click().Err()
+			return n.Click()
 		})
 	})
 	log.Println(err)

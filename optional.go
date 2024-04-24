@@ -5,8 +5,6 @@ import (
 	"reflect"
 )
 
-type Nothing struct{}
-
 type Optional[T any] struct {
 	value T
 	err   error

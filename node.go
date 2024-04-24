@@ -40,6 +40,12 @@ func (s NoSuchSelectorError) Error() string {
 	return fmt.Sprintf("no such selector found: `%s`", string(s))
 }
 
+func panicIfError(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+
 var ErrRequestIdleCallbackDeadline = errors.New("requestIdleCallback did deadline")
 
 type Node struct {
@@ -311,12 +317,12 @@ func (e Node) scrollIntoView() error {
 	return dom.ScrollIntoViewIfNeeded(e, dom.ScrollIntoViewIfNeededArgs{ObjectId: e.GetRemoteObjectID()})
 }
 
-func (e Node) ScrollIntoView() Optional[Nothing] {
-	return Optional[Nothing]{err: e.scrollIntoView()}
+func (e Node) ScrollIntoView() error {
+	return e.scrollIntoView()
 }
 
 func (e Node) MustScrollIntoView() {
-	e.ScrollIntoView().MustGetValue()
+	panicIfError(e.ScrollIntoView())
 }
 
 func (e Node) GetText() Optional[string] {
@@ -327,25 +333,25 @@ func (e Node) MustGetText() string {
 	return e.GetText().MustGetValue()
 }
 
-func (e Node) Focus() Optional[Nothing] {
+func (e Node) Focus() error {
 	err := dom.Focus(e, dom.FocusArgs{ObjectId: e.GetRemoteObjectID()})
 	if err != nil && err.Error() == `Element is not focusable` {
 		err = NodeNonFocusableError(e.requestedSelector)
 	}
-	return Optional[Nothing]{err: err}
+	return err
 }
 
 func (e Node) MustFocus() {
-	e.Focus().MustGetValue()
+	panicIfError(e.Focus())
 }
 
-func (e Node) Blur() Optional[Node] {
+func (e Node) Blur() error {
 	_, err := e.eval(`function(){this.blur()}`)
-	return Optional[Node]{err: err}
+	return err
 }
 
 func (e Node) MustBlur() {
-	e.Blur().MustGetValue()
+	panicIfError(e.Blur())
 }
 
 func (e Node) clearInput() error {
@@ -356,24 +362,24 @@ func (e Node) clearInput() error {
 	return e.frame.session.kb.Press(key.Keys[key.Backspace], time.Millisecond*85)
 }
 
-func (e Node) InsertText(value string) Optional[Nothing] {
-	return Optional[Nothing]{err: e.setText(value, false)}
+func (e Node) InsertText(value string) error {
+	return e.setText(value, false)
 }
 
 func (e Node) MustInsertText(value string) {
-	e.InsertText(value).MustGetValue()
+	panicIfError(e.InsertText(value))
 }
 
-func (e Node) SetText(value string) Optional[Nothing] {
-	return Optional[Nothing]{err: e.setText(value, true)}
+func (e Node) SetText(value string) error {
+	return e.setText(value, true)
 }
 
 func (e Node) MustSetText(value string) {
-	e.SetText(value).MustGetValue()
+	panicIfError(e.SetText(value))
 }
 
 func (e Node) setText(value string, clearBefore bool) (err error) {
-	if err = e.Focus().Err(); err != nil {
+	if err = e.Focus(); err != nil {
 		return err
 	}
 	if clearBefore {
@@ -396,23 +402,18 @@ func (e Node) CheckVisibility() Optional[bool] {
 	return optional[bool](value, err)
 }
 
-func (e Node) Upload(files ...string) Optional[Nothing] {
-	err := dom.SetFileInputFiles(e, dom.SetFileInputFilesArgs{
+func (e Node) Upload(files ...string) error {
+	return dom.SetFileInputFiles(e, dom.SetFileInputFilesArgs{
 		ObjectId: e.GetRemoteObjectID(),
 		Files:    files,
 	})
-	return Optional[Nothing]{err: err}
 }
 
 func (e Node) MustUpload(files ...string) {
-	e.Upload(files...).MustGetValue()
+	panicIfError(e.Upload(files...))
 }
 
-func (e Node) Click() Optional[Nothing] {
-	return Optional[Nothing]{err: e.click()}
-}
-
-func (e Node) click() (err error) {
+func (e Node) Click() (err error) {
 	if err = e.scrollIntoView(); err != nil {
 		return err
 	}
@@ -457,7 +458,7 @@ func (e Node) click() (err error) {
 }
 
 func (e Node) MustClick() {
-	e.Click().MustGetValue()
+	panicIfError(e.Click())
 }
 
 func (e Node) GetClickablePoint() Optional[Point] {
@@ -545,11 +546,7 @@ func (e Node) getContentQuad() (Quad, error) {
 	return nil, errors.New("node bounds have no size")
 }
 
-func (e Node) Hover() Optional[Nothing] {
-	return Optional[Nothing]{err: e.hover()}
-}
-
-func (e Node) hover() error {
+func (e Node) Hover() error {
 	if err := e.scrollIntoView(); err != nil {
 		return err
 	}
@@ -561,7 +558,7 @@ func (e Node) hover() error {
 }
 
 func (e Node) MustHover() {
-	e.Hover().MustGetValue()
+	panicIfError(e.Hover())
 }
 
 func (e Node) GetComputedStyle(style string, pseudo string) Optional[string] {
@@ -576,13 +573,13 @@ func (e Node) MustGetComputedStyle(style string, pseudo string) string {
 	return e.GetComputedStyle(style, pseudo).MustGetValue()
 }
 
-func (e Node) SetAttribute(attr, value string) Optional[Nothing] {
+func (e Node) SetAttribute(attr, value string) error {
 	_, err := e.eval(`function(a,v){this.setAttribute(a,v)}`, attr, value)
-	return Optional[Nothing]{err: err}
+	return err
 }
 
 func (e Node) MustSetAttribute(attr, value string) {
-	e.SetAttribute(attr, value).MustGetValue()
+	panicIfError(e.SetAttribute(attr, value))
 }
 
 func (e Node) GetAttribute(attr string) Optional[string] {
@@ -615,16 +612,16 @@ func (e Node) getViewportRectangle() (dom.Rect, error) {
 	return rect, nil
 }
 
-func (e Node) SelectByValues(values ...string) Optional[Nothing] {
+func (e Node) SelectByValues(values ...string) error {
 	_, err := e.eval(`function(a){const b=Array.from(this.options);this.value=void 0;for(const c of b)if(c.selected=a.includes(c.value),c.selected&&!this.multiple)break}`, values)
 	if err != nil {
-		return Optional[Nothing]{err: err}
+		return err
 	}
-	return Optional[Nothing]{err: e.dispatchEvents("click", "input", "change")}
+	return e.dispatchEvents("click", "input", "change")
 }
 
 func (e Node) MustSelectByValues(values ...string) {
-	e.SelectByValues(values...).MustGetValue()
+	panicIfError(e.SelectByValues(values...))
 }
 
 func (e Node) GetSelected(textContent bool) Optional[[]string] {
@@ -647,16 +644,16 @@ func (e Node) getSelected(textContent bool) ([]string, error) {
 	return stringsValues, nil
 }
 
-func (e Node) SetCheckbox(check bool) Optional[Nothing] {
+func (e Node) SetCheckbox(check bool) error {
 	_, err := e.eval(`function(v){this.checked=v}`, check)
 	if err != nil {
-		return Optional[Nothing]{err: err}
+		return err
 	}
-	return Optional[Nothing]{err: e.dispatchEvents("click", "input", "change")}
+	return e.dispatchEvents("click", "input", "change")
 }
 
 func (e Node) MustSetCheckbox(check bool) {
-	e.SetCheckbox(check).MustGetValue()
+	panicIfError(e.SetCheckbox(check))
 }
 
 func (e Node) IsChecked() Optional[bool] {
