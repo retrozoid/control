@@ -9,13 +9,15 @@ import (
 var ErrPromiseCanceled = errors.New("promise canceled")
 
 type Future[T any] interface {
-	Finally(func()) Future[T]
 	Get(context.Context) (T, error)
 	Cancel()
 }
 
-func NewPromise[T any](executor func(resolve func(T), reject func(error))) Future[T] {
-	value := &promise[T]{fulfilled: make(chan struct{}, 1)}
+func NewPromise[T any](executor func(resolve func(T), reject func(error)), finally func()) Future[T] {
+	value := &promise[T]{
+		finally:   finally,
+		fulfilled: make(chan struct{}, 1),
+	}
 	go executor(value.resolve, value.reject)
 	return value
 }
@@ -25,12 +27,7 @@ type promise[T any] struct {
 	fulfilled chan struct{}
 	value     T
 	err       error
-	finally   []func()
-}
-
-func (u *promise[T]) Finally(a func()) Future[T] {
-	u.finally = append(u.finally, a)
-	return u
+	finally   func()
 }
 
 func (u *promise[T]) Get(parent context.Context) (T, error) {
@@ -51,8 +48,8 @@ func (u *promise[T]) resolve(value T) {
 	u.once.Do(func() {
 		u.value = value
 		close(u.fulfilled)
-		for _, f := range u.finally {
-			f()
+		if u.finally != nil {
+			u.finally()
 		}
 	})
 }
@@ -61,8 +58,8 @@ func (u *promise[T]) reject(err error) {
 	u.once.Do(func() {
 		u.err = err
 		close(u.fulfilled)
-		for _, f := range u.finally {
-			f()
+		if u.finally != nil {
+			u.finally()
 		}
 	})
 }

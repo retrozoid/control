@@ -6,7 +6,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/retrozoid/control/cdp"
 	"github.com/retrozoid/control/chrome"
@@ -45,47 +44,15 @@ func TakeWithContext(ctx context.Context, logger *slog.Logger, chromeArgs ...str
 	return session, teardown, nil
 }
 
-// Future with session's context
-type Future[T any] interface {
-	Get() (T, error)
-	Cancel()
-}
-
-func WithSessionContext[T any](session *Session, future cdp.Future[T]) Future[T] {
-	return sessionContextFuture[T]{
-		context:  session.context,
-		deadline: session.timeout,
-		future:   future,
-	}
-}
-
-type sessionContextFuture[T any] struct {
-	context  context.Context
-	deadline time.Duration
-	future   cdp.Future[T]
-}
-
-func (f sessionContextFuture[T]) Get() (T, error) {
-	withTimeout, cancel := context.WithTimeout(f.context, f.deadline)
-	defer cancel()
-	return f.future.Get(withTimeout)
-}
-
-func (f sessionContextFuture[T]) Cancel() {
-	f.future.Cancel()
-}
-
-func Subscribe[T any](s *Session, method string, filter func(T) bool) Future[T] {
+func Subscribe[T any](s *Session, method string, filter func(T) bool) cdp.Future[T] {
 	var (
 		channel, cancel = s.Subscribe()
 	)
-	future := cdp.NewPromise(func(resolve func(T), reject func(error)) {
-		defer cancel()
+	callback := func(resolve func(T), reject func(error)) {
 		for value := range channel {
 			if value.Method == method {
 				var result T
-				err := json.Unmarshal(value.Params, &result)
-				if err != nil {
+				if err := json.Unmarshal(value.Params, &result); err != nil {
 					reject(err)
 					return
 				}
@@ -95,6 +62,6 @@ func Subscribe[T any](s *Session, method string, filter func(T) bool) Future[T] 
 				}
 			}
 		}
-	})
-	return WithSessionContext(s, future.Finally(cancel))
+	}
+	return cdp.NewPromise(callback, cancel)
 }

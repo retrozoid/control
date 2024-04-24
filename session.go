@@ -65,6 +65,10 @@ func (s *Session) Transport() *cdp.Transport {
 	return s.transport
 }
 
+func (s *Session) Context() context.Context {
+	return s.context
+}
+
 func (s *Session) Log(msg string, args ...any) {
 	level := slog.LevelInfo
 	args = append(args, "sessionId", s.sessionID)
@@ -248,7 +252,7 @@ func (s *Session) MustSetDownloadBehavior(behavior string, downloadPath string, 
 	}
 }
 
-func (s *Session) GetTargetCreated() Future[target.TargetCreated] {
+func (s *Session) GetTargetCreated() cdp.Future[target.TargetCreated] {
 	return Subscribe(s, "Target.targetCreated", func(t target.TargetCreated) bool {
 		return t.TargetInfo.Type == "page" && t.TargetInfo.OpenerId == s.targetID
 	})
