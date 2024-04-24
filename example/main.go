@@ -68,7 +68,7 @@ func main() {
 	retrier := retry.DefaultTiming
 
 	var values []string
-	err = retry.BaseRerty(retrier, func() error {
+	err = retry.Func(retrier, func() error {
 		values = []string{}
 		return session.Frame.QueryAll(".grid-product__title-inner").Then(func(nl control.NodeList) error {
 			return nl.Foreach(func(n *control.Node) error {

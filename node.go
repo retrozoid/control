@@ -175,7 +175,7 @@ func (e Node) OwnerFrame() *Frame {
 	return e.frame
 }
 
-func (e Node) Call(method string, send, recv interface{}) error {
+func (e Node) Call(method string, send, recv any) error {
 	return e.frame.Call(method, send, recv)
 }
 

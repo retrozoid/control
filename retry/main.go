@@ -67,10 +67,6 @@ func RecoverFunc(function func()) func() error {
 	}
 }
 
-func (d Static) Func(function func() error) error {
-	return BaseRerty(d, function)
-}
-
 func FuncPanic(t Timing, function func()) error {
 	return BaseRerty(t, RecoverFunc(function))
 }
