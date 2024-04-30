@@ -66,7 +66,11 @@ func (b broker) Subscribe(sessionID string) chan Message {
 }
 
 func (b broker) Unsubscribe(value chan Message) {
-	b.unsub <- value
+	select {
+	case b.unsub <- value:
+	default:
+		// todo
+	}
 }
 
 func (b broker) Publish(msg Message) {

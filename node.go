@@ -432,7 +432,7 @@ func (e Node) Click() (err error) {
 		local.X -= q[0].X
 		local.Y -= q[0].Y
 	}
-	hit, err := e.eval(`function(x,y) {
+	hitTest, err := e.eval(`function(x,y) {
 		for (let d = this.ownerDocument.elementFromPoint(x,y); d; d = d.parentNode) {
 			if (d === this) {
 				return true;
@@ -443,7 +443,7 @@ func (e Node) Click() (err error) {
 	if err != nil {
 		return err
 	}
-	if !hit.(bool) {
+	if !hitTest.(bool) {
 		return NodeNonClickableError(e.requestedSelector)
 	}
 	if err = e.frame.session.Click(point); err != nil {
