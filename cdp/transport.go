@@ -98,13 +98,10 @@ func (t *Transport) gracefullyClose() {
 }
 
 func (t *Transport) Subscribe(sessionID string) (chan Message, func()) {
-	select {
-	case <-t.context.Done():
-		return nil, nil
-	default:
-		ch := t.broker.Subscribe(sessionID)
-		return ch, func() {
-			t.broker.Unsubscribe(ch)
+	channel := t.broker.subscribe(sessionID)
+	return channel, func() {
+		if channel != nil {
+			t.broker.unsubscribe(channel)
 		}
 	}
 }
@@ -141,7 +138,7 @@ func (t *Transport) read() error {
 	t.Log(slog.LevelDebug, "recv <-", "response", response.String())
 
 	if response.ID == 0 && response.Message != nil {
-		t.broker.Publish(*response.Message)
+		t.broker.publish(*response.Message)
 		return nil
 	}
 

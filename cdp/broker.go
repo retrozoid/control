@@ -1,5 +1,9 @@
 package cdp
 
+import (
+	"sync"
+)
+
 var BrokerChannelSize = 50000
 
 type subscriber struct {
@@ -8,18 +12,20 @@ type subscriber struct {
 }
 
 type broker struct {
-	cancel  chan struct{}
-	publish chan Message
-	sub     chan subscriber
-	unsub   chan chan Message
+	cancel   chan struct{}
+	messages chan Message
+	sub      chan subscriber
+	unsub    chan chan Message
+	lock     *sync.Mutex
 }
 
 func makeBroker() broker {
 	return broker{
-		cancel:  make(chan struct{}),
-		publish: make(chan Message),
-		sub:     make(chan subscriber),
-		unsub:   make(chan chan Message),
+		cancel:   make(chan struct{}),
+		messages: make(chan Message),
+		sub:      make(chan subscriber),
+		unsub:    make(chan chan Message),
+		lock:     &sync.Mutex{},
 	}
 }
 
@@ -42,11 +48,11 @@ func (b broker) run() {
 				close(msgCh)
 			}
 			close(b.sub)
-			// close(b.unsub)
-			close(b.publish)
+			close(b.unsub)
+			close(b.messages)
 			return
 
-		case message := <-b.publish:
+		case message := <-b.messages:
 			for _, subscriber := range value {
 				if message.SessionID == "" || subscriber.sessionID == "" || message.SessionID == subscriber.sessionID {
 					subscriber.channel <- message
@@ -56,23 +62,39 @@ func (b broker) run() {
 	}
 }
 
-func (b broker) Subscribe(sessionID string) chan Message {
-	sub := subscriber{
-		sessionID: sessionID,
-		channel:   make(chan Message, BrokerChannelSize),
+func (b broker) subscribe(sessionID string) chan Message {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	select {
+	case <-b.cancel:
+		return nil
+	default:
+		sub := subscriber{
+			sessionID: sessionID,
+			channel:   make(chan Message, BrokerChannelSize),
+		}
+		b.sub <- sub
+		return sub.channel
 	}
-	b.sub <- sub
-	return sub.channel
 }
 
-func (b broker) Unsubscribe(value chan Message) {
-	b.unsub <- value
+func (b broker) unsubscribe(value chan Message) {
+	b.lock.Lock()
+	select {
+	case <-b.cancel:
+	default:
+		b.unsub <- value
+	}
+	b.lock.Unlock()
 }
 
-func (b broker) Publish(msg Message) {
-	b.publish <- msg
+func (b broker) publish(msg Message) {
+	b.messages <- msg
 }
 
 func (b broker) Cancel() {
+	b.lock.Lock()
 	close(b.cancel)
+	b.lock.Unlock()
 }
