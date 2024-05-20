@@ -415,10 +415,6 @@ func (e Node) Click() (err error) {
 	if err = e.scrollIntoView(); err != nil {
 		return err
 	}
-	_, err = e.frame.evaluate(`new Promise(setTimeout)`, true)
-	if err != nil {
-		return err
-	}
 	point, err := e.clickablePoint()
 	if err != nil {
 		return err
@@ -472,14 +468,12 @@ func (e Node) clickablePoint() (middle Point, err error) {
 	if !value {
 		return middle, NodeInvisibleError(e.requestedSelector)
 	}
-	var (
-		r0, r1 Quad
-	)
+	var r0, r1 Quad
 	r0, err = e.getContentQuad()
 	if err != nil {
 		return middle, err
 	}
-	_, err = e.frame.evaluate(`new Promise(requestAnimationFrame)`, true)
+	_, err = e.frame.evaluate(`new Promise(r => setTimeout(r,100))`, true)
 	if err != nil {
 		return middle, err
 	}
