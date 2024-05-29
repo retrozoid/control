@@ -40,7 +40,6 @@ func Dial(parent context.Context, dialer websocket.Dialer, url string, logger *s
 	if err != nil {
 		return nil, err
 	}
-	conn.EnableWriteCompression(true)
 	ctx, cancel := context.WithCancelCause(parent)
 	transport := &Transport{
 		context: ctx,
@@ -130,9 +129,9 @@ func (t *Transport) Send(request *Request) Future[Response] {
 	return promise
 }
 
-func (t *Transport) read() error {
+func (t *Transport) read() (err error) {
 	var response = Response{}
-	if err := t.conn.ReadJSON(&response); err != nil {
+	if err = t.conn.ReadJSON(&response); err != nil {
 		return err
 	}
 	t.Log(slog.LevelDebug, "recv <-", "response", response.String())

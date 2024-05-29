@@ -176,6 +176,9 @@ func NewSession(transport *cdp.Transport, targetID target.TargetID) (*Session, e
 	if err = network.Enable(session, network.EnableArgs{MaxPostDataSize: MaxPostDataSize}); err != nil {
 		return nil, err
 	}
+	if err = runtime.AddBinding(session, runtime.AddBindingArgs{Name: hitCheckFunc}); err != nil {
+		return nil, err
+	}
 	return session, nil
 }
 
@@ -273,14 +276,8 @@ func (s *Session) CreatePageTargetTab(url string) (*Session, error) {
 	return s.AttachToTarget(r.TargetId)
 }
 
-func (s *Session) ActivateTarget(id target.TargetID) error {
-	return target.ActivateTarget(s, target.ActivateTargetArgs{
-		TargetId: id,
-	})
-}
-
 func (s *Session) Activate() error {
-	return s.ActivateTarget(s.targetID)
+	return target.ActivateTarget(s, target.ActivateTargetArgs{TargetId: s.targetID})
 }
 
 func (s *Session) Close() error {

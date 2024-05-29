@@ -47,7 +47,8 @@ func (c Chrome) NewTab(cli *http.Client, address string) (target Target, err err
 	if err != nil {
 		return target, err
 	}
-	b, err := io.ReadAll(r.Body)
+	var b []byte
+	b, err = io.ReadAll(r.Body)
 	if err != nil {
 		return target, err
 	}

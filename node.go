@@ -1,11 +1,14 @@
 package control
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"time"
 
+	"github.com/retrozoid/control/cdp"
 	"github.com/retrozoid/control/key"
 	"github.com/retrozoid/control/protocol/dom"
 	"github.com/retrozoid/control/protocol/overlay"
@@ -53,6 +56,15 @@ type Node struct {
 }
 
 type NodeList []*Node
+
+func (nl NodeList) Foreach(predicate func(*Node) error) error {
+	for _, node := range nl {
+		if err := predicate(node); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 type Point struct {
 	X float64
@@ -192,9 +204,7 @@ func (e Node) IsConnected() bool {
 }
 
 func (e Node) MustReleaseObject() {
-	if err := e.ReleaseObject(); err != nil {
-		panic(err)
-	}
+	panicIfError(e.ReleaseObject())
 }
 
 func (e Node) ReleaseObject() error {
@@ -411,6 +421,32 @@ func (e Node) MustUpload(files ...string) {
 	panicIfError(e.Upload(files...))
 }
 
+const hitCheckFunc = `__control_clk_backend_hit`
+
+func (e Node) onClick() cdp.Future[runtime.BindingCalled] {
+	var channel, cancel = e.frame.session.Subscribe()
+	callback := func(resolve func(runtime.BindingCalled), reject func(error)) {
+		for value := range channel {
+			if value.Method == "Runtime.bindingCalled" {
+				var result runtime.BindingCalled
+				if err := json.Unmarshal(value.Params, &result); err != nil {
+					reject(err)
+					return
+				}
+				if result.Name == hitCheckFunc {
+					if result.Payload == string(e.GetRemoteObjectID()) {
+						resolve(result)
+					} else {
+						reject(errors.New(result.Payload))
+					}
+					return
+				}
+			}
+		}
+	}
+	return cdp.NewPromise(callback, cancel)
+}
+
 func (e Node) Click() (err error) {
 	if err = e.scrollIntoView(); err != nil {
 		return err
@@ -419,33 +455,40 @@ func (e Node) Click() (err error) {
 	if err != nil {
 		return err
 	}
-	local := point
-	if e.frame.node != nil {
-		q, err := e.frame.node.getContentQuad()
-		if err != nil {
-			return err
-		}
-		local.X -= q[0].X
-		local.Y -= q[0].Y
-	}
-	hitTest, err := e.eval(`function(x,y) {
-		for (let d = this.ownerDocument.elementFromPoint(x,y); d; d = d.parentNode) {
-			if (d === this) {
-				return true;
+
+	future := e.onClick()
+	defer future.Cancel()
+	_, err = e.eval(`function(func,roid) {
+		let a = window[func],
+			d = (b) => {
+				for (let d = b; d; d = d.parentNode) {
+					if (d === this) {
+						return !0
+					}
+				}
+				return !1
+			},
+			f = (b) => {
+				if (b.isTrusted && d(b.target)) {
+					a(roid)
+				} else {
+					b.stopImmediatePropagation()
+					a('target overlapped')
+				}
 			}
-		}
-		return false
-	}`, local.X, local.Y)
+		this.ownerDocument.addEventListener("click", f, { capture: true, once: true })
+		window.addEventListener("beforeunload", () => a('document unloaded before click'))
+	}`, hitCheckFunc, string(e.GetRemoteObjectID()))
 	if err != nil {
 		return err
-	}
-	if !hitTest.(bool) {
-		return NodeNonClickableError(e.requestedSelector)
 	}
 	if err = e.frame.session.Click(point); err != nil {
 		return err
 	}
-	return nil
+	ctx, cancel := context.WithTimeout(e.frame.session.context, e.frame.session.timeout)
+	defer cancel()
+	_, err = future.Get(ctx)
+	return err
 }
 
 func (e Node) MustClick() {
@@ -651,13 +694,4 @@ func (e Node) IsChecked() Optional[bool] {
 
 func (e Node) MustIsChecked() bool {
 	return e.IsChecked().MustGetValue()
-}
-
-func (nl NodeList) Foreach(predicate func(*Node) error) error {
-	for _, node := range nl {
-		if err := predicate(node); err != nil {
-			return err
-		}
-	}
-	return nil
 }
