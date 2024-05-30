@@ -59,6 +59,18 @@ func (m Mouse) Release(button input.MouseButton, point Point) error {
 	})
 }
 
+func (m Mouse) Down(button input.MouseButton, point Point) (err error) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	if err = m.Move(MouseNone, point); err != nil {
+		return err
+	}
+	if err = m.Press(button, point); err != nil {
+		return err
+	}
+	return
+}
+
 func (m Mouse) Click(button input.MouseButton, point Point, delay time.Duration) (err error) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()

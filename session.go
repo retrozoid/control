@@ -25,6 +25,7 @@ var (
 )
 
 const Blank = "about:blank"
+const hitCheckFunc = `__control_clk_backend_hit`
 
 var (
 	ErrTargetDestroyed           error = errors.New("target destroyed")
@@ -226,6 +227,26 @@ func (s *Session) handle(channel chan cdp.Message) error {
 	return nil
 }
 
+func (s *Session) funcCalled(fn string) cdp.Future[runtime.BindingCalled] {
+	var channel, cancel = s.Subscribe()
+	callback := func(resolve func(runtime.BindingCalled), reject func(error)) {
+		for value := range channel {
+			if value.Method == "Runtime.bindingCalled" {
+				var result runtime.BindingCalled
+				if err := json.Unmarshal(value.Params, &result); err != nil {
+					reject(err)
+					return
+				}
+				if result.Name == fn {
+					resolve(result)
+					return
+				}
+			}
+		}
+	}
+	return cdp.NewPromise(callback, cancel)
+}
+
 func (s *Session) CaptureScreenshot(format string, quality int, clip *page.Viewport, fromSurface, captureBeyondViewport, optimizeForSpeed bool) ([]byte, error) {
 	val, err := page.CaptureScreenshot(s, page.CaptureScreenshotArgs{
 		Format:                format,
@@ -295,6 +316,10 @@ func (s *Session) CloseTarget(id target.TargetID) (err error) {
 
 func (s *Session) Click(point Point) error {
 	return s.mouse.Click(MouseLeft, point, time.Millisecond*85)
+}
+
+func (s *Session) MouseDown(point Point) error {
+	return s.mouse.Down(MouseLeft, point)
 }
 
 func (s *Session) MustClick(point Point) {

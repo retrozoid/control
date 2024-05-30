@@ -2,13 +2,11 @@ package control
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"time"
 
-	"github.com/retrozoid/control/cdp"
 	"github.com/retrozoid/control/key"
 	"github.com/retrozoid/control/protocol/dom"
 	"github.com/retrozoid/control/protocol/overlay"
@@ -421,32 +419,6 @@ func (e Node) MustUpload(files ...string) {
 	panicIfError(e.Upload(files...))
 }
 
-const hitCheckFunc = `__control_clk_backend_hit`
-
-func (e Node) onClick() cdp.Future[runtime.BindingCalled] {
-	var channel, cancel = e.frame.session.Subscribe()
-	callback := func(resolve func(runtime.BindingCalled), reject func(error)) {
-		for value := range channel {
-			if value.Method == "Runtime.bindingCalled" {
-				var result runtime.BindingCalled
-				if err := json.Unmarshal(value.Params, &result); err != nil {
-					reject(err)
-					return
-				}
-				if result.Name == hitCheckFunc {
-					if result.Payload == string(e.GetRemoteObjectID()) {
-						resolve(result)
-					} else {
-						reject(errors.New(result.Payload))
-					}
-					return
-				}
-			}
-		}
-	}
-	return cdp.NewPromise(callback, cancel)
-}
-
 func (e Node) Click() (err error) {
 	if err = e.scrollIntoView(); err != nil {
 		return err
@@ -456,9 +428,9 @@ func (e Node) Click() (err error) {
 		return err
 	}
 
-	future := e.onClick()
+	future := e.frame.session.funcCalled(hitCheckFunc)
 	defer future.Cancel()
-	_, err = e.eval(`function(func,roid) {
+	_, err = e.eval(`function(func) {
 		let a = window[func],
 			d = (b) => {
 				for (let d = b; d; d = d.parentNode) {
@@ -470,7 +442,7 @@ func (e Node) Click() (err error) {
 			},
 			f = (b) => {
 				if (b.isTrusted && d(b.target)) {
-					a(roid)
+					a('')
 				} else {
 					b.stopImmediatePropagation()
 					a('target overlapped')
@@ -478,7 +450,7 @@ func (e Node) Click() (err error) {
 			}
 		this.ownerDocument.addEventListener("click", f, { capture: true, once: true })
 		window.addEventListener("beforeunload", () => a('document unloaded before click'))
-	}`, hitCheckFunc, string(e.GetRemoteObjectID()))
+	}`, hitCheckFunc)
 	if err != nil {
 		return err
 	}
@@ -487,12 +459,69 @@ func (e Node) Click() (err error) {
 	}
 	ctx, cancel := context.WithTimeout(e.frame.session.context, e.frame.session.timeout)
 	defer cancel()
-	_, err = future.Get(ctx)
-	return err
+	call, err := future.Get(ctx)
+	if err != nil {
+		return err
+	}
+	if call.Payload != "" {
+		return errors.New(call.Payload)
+	}
+	return nil
 }
 
 func (e Node) MustClick() {
 	panicIfError(e.Click())
+}
+
+func (e Node) Down() (err error) {
+	if err = e.scrollIntoView(); err != nil {
+		return err
+	}
+	point, err := e.clickablePoint()
+	if err != nil {
+		return err
+	}
+	future := e.frame.session.funcCalled(hitCheckFunc)
+	defer future.Cancel()
+
+	_, err = e.eval(`function(func) {
+		let a = window[func],
+			d = (b) => {
+				for (let d = b; d; d = d.parentNode) {
+					if (d === this) {
+						return !0
+					}
+				}
+				return !1
+			},
+			f = (b) => {
+				if (b.isTrusted && d(b.target)) {
+					a('')
+				} else {
+					b.stopImmediatePropagation()
+					a('target overlapped')
+				}
+			}
+		this.ownerDocument.addEventListener("mousedown", f, { capture: true, once: true })
+	}`, hitCheckFunc)
+
+	if err = e.frame.session.MouseDown(point); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(e.frame.session.context, e.frame.session.timeout)
+	defer cancel()
+	call, err := future.Get(ctx)
+	if err != nil {
+		return err
+	}
+	if call.Payload != "" {
+		return errors.New(call.Payload)
+	}
+	return nil
+}
+
+func (e Node) MustDown() {
+	panicIfError(e.Down())
 }
 
 func (e Node) GetClickablePoint() Optional[Point] {
