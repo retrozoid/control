@@ -83,18 +83,13 @@ func main() {
 	log.Println(values, err)
 
 	err = retry.FuncPanic(retrier, func() {
-		session.Frame.MustQuery(`.pager__count-pages`).MustGetBoundingClientRect()
+		node := session.Frame.MustQuery(`.pager__count-pages`)
+		node.MustGetBoundingClientRect()
+		node.MustClick()
 	})
 	log.Println(err)
 
-	err = retry.Func(retrier, func() error {
-		return session.Frame.Query(`.pager__count-pages`).Then(func(n *control.Node) error {
-			return n.Click()
-		})
-	})
-	log.Println(err)
-
-	p := session.Frame.Evaluate(`new Promise((a,b) => b('timeout'))`, false).MustGetValue().(control.RemoteObject)
+	p := session.Frame.Evaluate(`new Promise((a,b) => a('ok'))`, false).MustGetValue().(control.RemoteObject)
 	a, b := session.Frame.AwaitPromise(p)
 	log.Println(a, b)
 }

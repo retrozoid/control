@@ -12,11 +12,11 @@ import (
 	"github.com/retrozoid/control/protocol/target"
 )
 
-func Take(args ...string) (session *Session, dfr func(), err error) {
+func Take(args ...string) (session *Session, cancel func(), err error) {
 	return TakeWithContext(context.TODO(), nil, args...)
 }
 
-func TakeWithContext(ctx context.Context, logger *slog.Logger, chromeArgs ...string) (session *Session, dfr func(), err error) {
+func TakeWithContext(ctx context.Context, logger *slog.Logger, chromeArgs ...string) (session *Session, cancel func(), err error) {
 	browser, err := chrome.Launch(ctx, chromeArgs...)
 	if err != nil {
 		return nil, nil, errors.Join(err, errors.New("chrome launch failed"))
